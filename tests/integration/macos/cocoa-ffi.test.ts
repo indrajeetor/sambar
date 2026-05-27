@@ -42,5 +42,17 @@ if (currentPlatform() === 'macos') {
       const cls = lib.symbols.objc_getClass(cstr('SambarNonexistentClass_xyzxyz'));
       expect(cls).toBeNull();
     });
+
+    test('objc_getClass resolves NSWindow after AppKit is loaded', () => {
+      const lib = loadCocoaFFI();
+      const cls = lib.symbols.objc_getClass(cstr('NSWindow'));
+      expect(cls).not.toBeNull();
+    });
+
+    test('objc_getClass resolves NSApplication after AppKit is loaded', () => {
+      const lib = loadCocoaFFI();
+      const cls = lib.symbols.objc_getClass(cstr('NSApplication'));
+      expect(cls).not.toBeNull();
+    });
   });
 }

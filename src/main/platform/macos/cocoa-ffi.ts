@@ -3,6 +3,7 @@ import { SambarError } from '../../../common/errors';
 import { currentPlatform } from '../../../common/platform';
 
 const FOUNDATION_PATH = '/System/Library/Frameworks/Foundation.framework/Foundation';
+const APPKIT_PATH = '/System/Library/Frameworks/AppKit.framework/AppKit';
 const LIBOBJC_PATH = 'libobjc.A.dylib';
 
 const FOUNDATION_SYMBOLS = {
@@ -12,7 +13,15 @@ const FOUNDATION_SYMBOLS = {
   },
 };
 
+const APPKIT_SYMBOLS = {
+  NSApplicationMain: {
+    args: [FFIType.i32, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+};
+
 let foundationLib: unknown;
+let appKitLib: unknown;
 
 /**
  * Open `libobjc.A.dylib` plus `Foundation.framework` and expose the three
@@ -26,12 +35,12 @@ let foundationLib: unknown;
  * we declare the simplest two-arg form here and add typed variants in later
  * modules as the call sites require them.
  *
- * Foundation is loaded for the side-effect of registering its classes
- * (`NSString`, `NSNumber`, `NSDictionary`, etc.) with the Objective-C runtime
- * so that subsequent `objc_getClass(...)` calls resolve them. Bun requires at
- * least one symbol per `dlopen`, so we declare `NSGetSizeAndAlignment` as an
- * anchor. The handle is kept at module scope to prevent GC from closing the
- * library.
+ * Foundation + AppKit are loaded for the side-effect of registering their
+ * classes (`NSString`, `NSWindow`, `NSApplication`, etc.) with the Objective-C
+ * runtime so subsequent `objc_getClass(...)` calls resolve them. Bun requires
+ * at least one symbol per `dlopen`, so we declare anchor symbols
+ * (`NSGetSizeAndAlignment`, `NSApplicationMain`) without invoking them. The
+ * handles are kept at module scope to prevent GC from closing the libraries.
  *
  * Only callable on macOS — throws {@link SambarError} on any other platform so
  * that this module remains safely *importable* on Linux/Windows (the failure
@@ -47,6 +56,10 @@ export const loadCocoaFFI = () => {
 
   if (foundationLib === undefined) {
     foundationLib = dlopen(FOUNDATION_PATH, FOUNDATION_SYMBOLS);
+  }
+
+  if (appKitLib === undefined) {
+    appKitLib = dlopen(APPKIT_PATH, APPKIT_SYMBOLS);
   }
 
   return dlopen(LIBOBJC_PATH, {
