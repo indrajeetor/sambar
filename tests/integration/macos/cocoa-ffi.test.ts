@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { currentPlatform } from '../../../src/common/platform';
 import { loadCocoaFFI } from '../../../src/main/platform/macos/cocoa-ffi';
-import { cstr } from '../../../src/main/platform/macos/cstr';
+import { cstr } from '../../../src/main/platform/cstr';
 
 if (currentPlatform() === 'macos') {
   describe('Cocoa FFI on macOS', () => {

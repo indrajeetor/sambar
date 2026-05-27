@@ -2,7 +2,7 @@ import type { Pointer } from 'bun:ffi';
 import { ClassCache } from './cocoa-class-cache';
 import { loadCocoaFFI } from './cocoa-ffi';
 import { SelectorCache } from './cocoa-selector-cache';
-import { cstr } from './cstr';
+import { cstr } from '../cstr';
 
 /**
  * The live Cocoa runtime — caches backed by the real `libobjc` symbols.

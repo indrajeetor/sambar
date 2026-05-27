@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { cstr } from '../../../../../src/main/platform/macos/cstr';
+import { cstr } from '../../../../src/main/platform/cstr';
 
 describe('cstr', () => {
   test('returns a Uint8Array', () => {
