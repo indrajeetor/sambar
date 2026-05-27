@@ -24,5 +24,23 @@ if (currentPlatform() === 'macos') {
       const b = lib.symbols.sel_registerName(cstr('release'));
       expect(a).toBe(b);
     });
+
+    test('objc_getClass resolves NSObject after Foundation is loaded', () => {
+      const lib = loadCocoaFFI();
+      const cls = lib.symbols.objc_getClass(cstr('NSObject'));
+      expect(cls).not.toBeNull();
+    });
+
+    test('objc_getClass resolves NSString after Foundation is loaded', () => {
+      const lib = loadCocoaFFI();
+      const cls = lib.symbols.objc_getClass(cstr('NSString'));
+      expect(cls).not.toBeNull();
+    });
+
+    test('objc_getClass returns null for an unknown class name', () => {
+      const lib = loadCocoaFFI();
+      const cls = lib.symbols.objc_getClass(cstr('SambarNonexistentClass_xyzxyz'));
+      expect(cls).toBeNull();
+    });
   });
 }
