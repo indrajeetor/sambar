@@ -21,11 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux native deps (GTK 4)
+      - name: Install Linux native deps (GTK 4 + Xvfb)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-1
+          sudo apt-get install -y libgtk-4-1 xvfb
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -34,5 +34,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Validate (format + lint + type-check + test)
+      - name: Validate (Linux — under Xvfb for GTK tests)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a bun run validate
+
+      - name: Validate (macOS)
+        if: runner.os == 'macOS'
         run: bun run validate
