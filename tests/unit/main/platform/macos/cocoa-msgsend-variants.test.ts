@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { SambarError } from '../../../../../src/common/errors';
 import { currentPlatform } from '../../../../../src/common/platform';
 import {
+  msgSendF64,
   msgSendInitWithContentRect,
   msgSendPtr,
   msgSendU8,
@@ -25,6 +26,12 @@ describe('msgSendU8 export', () => {
   });
 });
 
+describe('msgSendF64 export', () => {
+  test('is a function', () => {
+    expect(typeof msgSendF64).toBe('function');
+  });
+});
+
 if (currentPlatform() !== 'macos') {
   describe('msgSendInitWithContentRect on non-macOS hosts', () => {
     test('throws SambarError', () => {
@@ -43,6 +50,12 @@ if (currentPlatform() !== 'macos') {
   describe('msgSendU8 on non-macOS hosts', () => {
     test('throws SambarError', () => {
       expect(() => msgSendU8(0n, 0n, 0)).toThrow(SambarError);
+    });
+  });
+
+  describe('msgSendF64 on non-macOS hosts', () => {
+    test('throws SambarError', () => {
+      expect(() => msgSendF64(0n, 0n, 0)).toThrow(SambarError);
     });
   });
 }

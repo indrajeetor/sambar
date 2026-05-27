@@ -64,6 +64,13 @@ const U8_VARIANT = {
   },
 } as const;
 
+const F64_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.f64],
+    returns: FFIType.pointer,
+  },
+} as const;
+
 const getInitWithContentRectLib = macOSLibraryAccessor('msgSendInitWithContentRect', () =>
   dlopen(LIBOBJC_PATH, INIT_WITH_CONTENT_RECT_VARIANT),
 );
@@ -71,6 +78,8 @@ const getInitWithContentRectLib = macOSLibraryAccessor('msgSendInitWithContentRe
 const getPtrLib = macOSLibraryAccessor('msgSendPtr', () => dlopen(LIBOBJC_PATH, PTR_VARIANT));
 
 const getU8Lib = macOSLibraryAccessor('msgSendU8', () => dlopen(LIBOBJC_PATH, U8_VARIANT));
+
+const getF64Lib = macOSLibraryAccessor('msgSendF64', () => dlopen(LIBOBJC_PATH, F64_VARIANT));
 
 const ptrIn = (n: bigint): Pointer => Number(n) as Pointer;
 const bigIntOut = (p: Pointer | null): bigint => (p === null ? 0n : BigInt(p));
@@ -132,6 +141,19 @@ export const msgSendPtr = (receiver: bigint, selector: bigint, arg: bigint): big
  */
 export const msgSendU8 = (receiver: bigint, selector: bigint, arg: number): bigint => {
   const lib = getU8Lib();
+  const result = lib.symbols.objc_msgSend(ptrIn(receiver), ptrIn(selector), arg);
+  return bigIntOut(result);
+};
+
+/**
+ * Send a message with one extra `double` arg, e.g.
+ * `[NSDate dateWithTimeIntervalSinceNow:0.5]` or
+ * `[NSTimer scheduledTimerWithTimeInterval:...]` (with appropriate variants).
+ *
+ * Only callable on macOS — throws {@link SambarError} otherwise.
+ */
+export const msgSendF64 = (receiver: bigint, selector: bigint, arg: number): bigint => {
+  const lib = getF64Lib();
   const result = lib.symbols.objc_msgSend(ptrIn(receiver), ptrIn(selector), arg);
   return bigIntOut(result);
 };
