@@ -57,11 +57,20 @@ const PTR_VARIANT = {
   },
 } as const;
 
+const U8_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u8],
+    returns: FFIType.pointer,
+  },
+} as const;
+
 const getInitWithContentRectLib = macOSLibraryAccessor('msgSendInitWithContentRect', () =>
   dlopen(LIBOBJC_PATH, INIT_WITH_CONTENT_RECT_VARIANT),
 );
 
 const getPtrLib = macOSLibraryAccessor('msgSendPtr', () => dlopen(LIBOBJC_PATH, PTR_VARIANT));
+
+const getU8Lib = macOSLibraryAccessor('msgSendU8', () => dlopen(LIBOBJC_PATH, U8_VARIANT));
 
 const ptrIn = (n: bigint): Pointer => Number(n) as Pointer;
 const bigIntOut = (p: Pointer | null): bigint => (p === null ? 0n : BigInt(p));
@@ -111,5 +120,18 @@ export const msgSendInitWithContentRect = (
 export const msgSendPtr = (receiver: bigint, selector: bigint, arg: bigint): bigint => {
   const lib = getPtrLib();
   const result = lib.symbols.objc_msgSend(ptrIn(receiver), ptrIn(selector), ptrIn(arg));
+  return bigIntOut(result);
+};
+
+/**
+ * Send a message with one extra `u8` arg, e.g.
+ * `[NSApp activateIgnoringOtherApps:YES]`, `[window setReleasedWhenClosed:NO]`,
+ * `[NSNumber numberWithBool:YES]`. Pass `0` or `1` for the boolean.
+ *
+ * Only callable on macOS — throws {@link SambarError} otherwise.
+ */
+export const msgSendU8 = (receiver: bigint, selector: bigint, arg: number): bigint => {
+  const lib = getU8Lib();
+  const result = lib.symbols.objc_msgSend(ptrIn(receiver), ptrIn(selector), arg);
   return bigIntOut(result);
 };

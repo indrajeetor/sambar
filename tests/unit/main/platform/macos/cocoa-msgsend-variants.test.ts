@@ -4,6 +4,7 @@ import { currentPlatform } from '../../../../../src/common/platform';
 import {
   msgSendInitWithContentRect,
   msgSendPtr,
+  msgSendU8,
 } from '../../../../../src/main/platform/macos/cocoa-msgsend-variants';
 
 describe('msgSendInitWithContentRect export', () => {
@@ -15,6 +16,12 @@ describe('msgSendInitWithContentRect export', () => {
 describe('msgSendPtr export', () => {
   test('is a function', () => {
     expect(typeof msgSendPtr).toBe('function');
+  });
+});
+
+describe('msgSendU8 export', () => {
+  test('is a function', () => {
+    expect(typeof msgSendU8).toBe('function');
   });
 });
 
@@ -30,6 +37,12 @@ if (currentPlatform() !== 'macos') {
   describe('msgSendPtr on non-macOS hosts', () => {
     test('throws SambarError', () => {
       expect(() => msgSendPtr(0n, 0n, 0n)).toThrow(SambarError);
+    });
+  });
+
+  describe('msgSendU8 on non-macOS hosts', () => {
+    test('throws SambarError', () => {
+      expect(() => msgSendU8(0n, 0n, 0)).toThrow(SambarError);
     });
   });
 }
