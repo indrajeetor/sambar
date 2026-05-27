@@ -42,5 +42,21 @@ if (currentPlatform() === 'macos') {
     test('classes.get throws SambarError for an unknown class', () => {
       expect(() => cocoa().classes.get('SambarNonexistentClass_xyzxyz')).toThrow(SambarError);
     });
+
+    test('classes.get resolves NSWindow to a non-zero bigint', () => {
+      const cls = cocoa().classes.get('NSWindow');
+      expect(cls).not.toBe(0n);
+    });
+
+    test('msgSend(NSWindow, alloc) returns a non-zero allocated instance', () => {
+      const rt = cocoa();
+      const nsWindowClass = rt.classes.get('NSWindow');
+      const allocSel = rt.selectors.get('alloc');
+
+      const instance = rt.msgSend(nsWindowClass, allocSel);
+
+      expect(instance).not.toBe(0n);
+      expect(instance).not.toBe(nsWindowClass);
+    });
   });
 }
