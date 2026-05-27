@@ -14,6 +14,25 @@ import { currentPlatform } from '../../../common/platform';
 
 const LIBOBJC_PATH = 'libobjc.A.dylib';
 
+/**
+ * Returns an accessor that lazily opens a macOS-only library and caches the
+ * resulting handle. The accessor throws {@link SambarError} on any non-macOS
+ * host. Used to factor out the platform-check + lazy-`dlopen` pattern shared
+ * by every variant in this module.
+ */
+const macOSLibraryAccessor = <T>(name: string, open: () => T): (() => T) => {
+  let cached: T | undefined;
+  return () => {
+    if (currentPlatform() !== 'macos') {
+      throw new SambarError(`${name} is only supported on macOS`);
+    }
+    if (cached === undefined) {
+      cached = open();
+    }
+    return cached;
+  };
+};
+
 const INIT_WITH_CONTENT_RECT_VARIANT = {
   objc_msgSend: {
     args: [
@@ -38,10 +57,11 @@ const PTR_VARIANT = {
   },
 } as const;
 
-const openInitWithContentRect = () => dlopen(LIBOBJC_PATH, INIT_WITH_CONTENT_RECT_VARIANT);
-const openPtrVariant = () => dlopen(LIBOBJC_PATH, PTR_VARIANT);
-let initWithContentRectLib: ReturnType<typeof openInitWithContentRect> | undefined;
-let ptrLib: ReturnType<typeof openPtrVariant> | undefined;
+const getInitWithContentRectLib = macOSLibraryAccessor('msgSendInitWithContentRect', () =>
+  dlopen(LIBOBJC_PATH, INIT_WITH_CONTENT_RECT_VARIANT),
+);
+
+const getPtrLib = macOSLibraryAccessor('msgSendPtr', () => dlopen(LIBOBJC_PATH, PTR_VARIANT));
 
 const ptrIn = (n: bigint): Pointer => Number(n) as Pointer;
 const bigIntOut = (p: Pointer | null): bigint => (p === null ? 0n : BigInt(p));
@@ -66,13 +86,8 @@ export const msgSendInitWithContentRect = (
   backing: bigint,
   defer: boolean,
 ): bigint => {
-  if (currentPlatform() !== 'macos') {
-    throw new SambarError('msgSendInitWithContentRect is only supported on macOS');
-  }
-  if (initWithContentRectLib === undefined) {
-    initWithContentRectLib = openInitWithContentRect();
-  }
-  const result = initWithContentRectLib.symbols.objc_msgSend(
+  const lib = getInitWithContentRectLib();
+  const result = lib.symbols.objc_msgSend(
     ptrIn(receiver),
     ptrIn(selector),
     rect[0],
@@ -94,12 +109,7 @@ export const msgSendInitWithContentRect = (
  * Only callable on macOS — throws {@link SambarError} otherwise.
  */
 export const msgSendPtr = (receiver: bigint, selector: bigint, arg: bigint): bigint => {
-  if (currentPlatform() !== 'macos') {
-    throw new SambarError('msgSendPtr is only supported on macOS');
-  }
-  if (ptrLib === undefined) {
-    ptrLib = openPtrVariant();
-  }
-  const result = ptrLib.symbols.objc_msgSend(ptrIn(receiver), ptrIn(selector), ptrIn(arg));
+  const lib = getPtrLib();
+  const result = lib.symbols.objc_msgSend(ptrIn(receiver), ptrIn(selector), ptrIn(arg));
   return bigIntOut(result);
 };
