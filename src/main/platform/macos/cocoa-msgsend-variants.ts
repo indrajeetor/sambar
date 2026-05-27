@@ -31,8 +31,17 @@ const INIT_WITH_CONTENT_RECT_VARIANT = {
   },
 } as const;
 
+const PTR_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+} as const;
+
 const openInitWithContentRect = () => dlopen(LIBOBJC_PATH, INIT_WITH_CONTENT_RECT_VARIANT);
+const openPtrVariant = () => dlopen(LIBOBJC_PATH, PTR_VARIANT);
 let initWithContentRectLib: ReturnType<typeof openInitWithContentRect> | undefined;
+let ptrLib: ReturnType<typeof openPtrVariant> | undefined;
 
 const ptrIn = (n: bigint): Pointer => Number(n) as Pointer;
 const bigIntOut = (p: Pointer | null): bigint => (p === null ? 0n : BigInt(p));
@@ -74,5 +83,23 @@ export const msgSendInitWithContentRect = (
     backing,
     defer ? 1 : 0,
   );
+  return bigIntOut(result);
+};
+
+/**
+ * Send a message with one extra pointer-sized arg, e.g.
+ * `[receiver setTitle:nsstring]`, `[receiver makeKeyAndOrderFront:nil]`,
+ * `[receiver performSelector:sel]`.
+ *
+ * Only callable on macOS — throws {@link SambarError} otherwise.
+ */
+export const msgSendPtr = (receiver: bigint, selector: bigint, arg: bigint): bigint => {
+  if (currentPlatform() !== 'macos') {
+    throw new SambarError('msgSendPtr is only supported on macOS');
+  }
+  if (ptrLib === undefined) {
+    ptrLib = openPtrVariant();
+  }
+  const result = ptrLib.symbols.objc_msgSend(ptrIn(receiver), ptrIn(selector), ptrIn(arg));
   return bigIntOut(result);
 };
