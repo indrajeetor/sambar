@@ -1,0 +1,125 @@
+import { nsString } from './cocoa-foundation';
+import {
+  msgSendI64,
+  msgSendPtr,
+  msgSendPtr3,
+  msgSendReturnsI64,
+  msgSendU8,
+} from './cocoa-msgsend-variants';
+import { cocoa } from './cocoa-runtime';
+import { defineObjcClass } from './cocoa-runtime-class';
+import type { Handle } from './objc';
+
+/**
+ * Builds native `NSMenu` trees from a backend-neutral menu spec and routes item
+ * clicks back to JS.
+ *
+ * A single shared `SambarMenuTarget` class (defined once at runtime, D026) holds
+ * the `sambarMenuAction:` selector that every clickable item points at. When an
+ * item fires, AppKit sends `[target sambarMenuAction:item]`; the IMP looks the
+ * item handle up in a registry and invokes its JS click handler. This mirrors
+ * the proven script-message-handler / navigation-delegate pattern.
+ */
+
+/** A backend-neutral description of one menu item. */
+export type NativeMenuItemSpec = {
+  readonly label: string;
+  readonly type: 'normal' | 'separator' | 'submenu';
+  readonly enabled: boolean;
+  /** Single-character key equivalent (e.g. `'q'`), or `''` for none. */
+  readonly keyEquivalent: string;
+  readonly submenu?: ReadonlyArray<NativeMenuItemSpec>;
+  readonly onClick?: () => void;
+};
+
+const clickRegistry = new Map<Handle, () => void>();
+
+let targetClass: Handle | undefined;
+let sharedTarget: Handle | undefined;
+
+const ensureTarget = (): Handle => {
+  if (sharedTarget !== undefined) {
+    return sharedTarget;
+  }
+  const rt = cocoa();
+  targetClass = defineObjcClass('SambarMenuTarget', 'NSObject', [
+    {
+      selector: 'sambarMenuAction:',
+      typeEncoding: 'v@:@',
+      args: ['object'],
+      impl: (_self, _cmd, sender) => {
+        clickRegistry.get(sender)?.();
+      },
+    },
+  ]);
+  sharedTarget = rt.msgSend(
+    rt.msgSend(targetClass, rt.selectors.get('alloc')),
+    rt.selectors.get('init'),
+  );
+  return sharedTarget;
+};
+
+const realizeItem = (spec: NativeMenuItemSpec): Handle => {
+  const rt = cocoa();
+  if (spec.type === 'separator') {
+    return rt.msgSend(rt.classes.get('NSMenuItem'), rt.selectors.get('separatorItem'));
+  }
+
+  const hasAction = spec.type === 'normal' && spec.onClick !== undefined;
+  const action = hasAction ? rt.selectors.get('sambarMenuAction:') : 0n;
+  const item = msgSendPtr3(
+    rt.msgSend(rt.classes.get('NSMenuItem'), rt.selectors.get('alloc')),
+    rt.selectors.get('initWithTitle:action:keyEquivalent:'),
+    nsString(spec.label),
+    action,
+    nsString(spec.keyEquivalent),
+  );
+
+  if (hasAction) {
+    msgSendPtr(item, rt.selectors.get('setTarget:'), ensureTarget());
+    if (spec.onClick !== undefined) {
+      clickRegistry.set(item, spec.onClick);
+    }
+  }
+
+  msgSendU8(item, rt.selectors.get('setEnabled:'), spec.enabled ? 1 : 0);
+
+  if (spec.type === 'submenu' && spec.submenu !== undefined) {
+    const submenu = realizeMenu(spec.submenu);
+    msgSendPtr(item, rt.selectors.get('setSubmenu:'), submenu);
+  }
+
+  return item;
+};
+
+/** Build an `NSMenu` from a list of item specs. Returns the menu handle. */
+export const realizeMenu = (items: ReadonlyArray<NativeMenuItemSpec>): Handle => {
+  const rt = cocoa();
+  const menu = rt.msgSend(
+    rt.msgSend(rt.classes.get('NSMenu'), rt.selectors.get('alloc')),
+    rt.selectors.get('init'),
+  );
+  for (const spec of items) {
+    msgSendPtr(menu, rt.selectors.get('addItem:'), realizeItem(spec));
+  }
+  return menu;
+};
+
+/** Install `menu` as the application's main menu bar. */
+export const setApplicationMenu = (menu: Handle): void => {
+  const rt = cocoa();
+  const app = rt.msgSend(rt.classes.get('NSApplication'), rt.selectors.get('sharedApplication'));
+  msgSendPtr(app, rt.selectors.get('setMainMenu:'), menu);
+};
+
+/** Number of items in a realized menu. Used for verification. */
+export const menuItemCount = (menu: Handle): number =>
+  Number(msgSendReturnsI64(menu, cocoa().selectors.get('numberOfItems')));
+
+/**
+ * Programmatically trigger the item at `index` in `menu`, as if clicked.
+ * Used for testing the click path without a real event loop.
+ */
+export const performMenuItem = (menu: Handle, index: number): void => {
+  msgSendI64(menu, cocoa().selectors.get('performActionForItemAtIndex:'), BigInt(index));
+};
