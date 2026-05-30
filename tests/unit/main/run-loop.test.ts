@@ -61,7 +61,12 @@ describe('CooperativePump draining', () => {
   test('each tick invokes drainOnce', () => {
     const m = manualTicker();
     let drains = 0;
-    const pump = new CooperativePump(() => { drains += 1; }, { ticker: m.ticker });
+    const pump = new CooperativePump(
+      () => {
+        drains += 1;
+      },
+      { ticker: m.ticker },
+    );
     pump.start();
     m.tick();
     m.tick();
@@ -72,7 +77,12 @@ describe('CooperativePump draining', () => {
   test('no draining occurs after stop', () => {
     const m = manualTicker();
     let drains = 0;
-    const pump = new CooperativePump(() => { drains += 1; }, { ticker: m.ticker });
+    const pump = new CooperativePump(
+      () => {
+        drains += 1;
+      },
+      { ticker: m.ticker },
+    );
     pump.start();
     m.tick();
     pump.stop();
@@ -82,9 +92,12 @@ describe('CooperativePump draining', () => {
 
   test('a throwing drainOnce does not stop the pump (errors are swallowed per tick)', () => {
     const m = manualTicker();
-    const pump = new CooperativePump(() => {
-      throw new Error('native hiccup');
-    }, { ticker: m.ticker });
+    const pump = new CooperativePump(
+      () => {
+        throw new Error('native hiccup');
+      },
+      { ticker: m.ticker },
+    );
     pump.start();
     expect(() => m.tick()).not.toThrow();
     expect(pump.isRunning).toBe(true);

@@ -37,10 +37,10 @@ if (currentPlatform() === 'macos') {
       expect(cls).not.toBeNull();
     });
 
-    test('objc_getClass returns null for an unknown class name', () => {
+    test('objc_getClass returns 0n for an unknown class name', () => {
       const lib = loadCocoaFFI();
       const cls = lib.symbols.objc_getClass(cstr('SambarNonexistentClass_xyzxyz'));
-      expect(cls).toBeNull();
+      expect(cls).toBe(0n);
     });
 
     test('objc_getClass resolves NSWindow after AppKit is loaded', () => {

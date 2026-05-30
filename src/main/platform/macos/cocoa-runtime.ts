@@ -2,7 +2,7 @@ import { cstr } from '../cstr';
 import { ClassCache } from './cocoa-class-cache';
 import { loadCocoaFFI } from './cocoa-ffi';
 import { SelectorCache } from './cocoa-selector-cache';
-import { bigIntOut, type Handle, ptrIn } from './objc';
+import type { Handle } from './objc';
 
 /**
  * The live Cocoa runtime — caches backed by the real `libobjc` symbols.
@@ -12,8 +12,10 @@ import { bigIntOut, type Handle, ptrIn } from './objc';
  * and class caches with the live registrar / resolver, and returns the shared
  * runtime object. Subsequent calls return the same instance.
  *
- * Handles are exposed as `bigint` throughout Sambar (D016); the `Pointer`
- * conversion is isolated in {@link ptrIn} / {@link bigIntOut} from `./objc`.
+ * Handles are exposed as `bigint` throughout Sambar (D016). The underlying FFI
+ * declares the `id`/`SEL`/`Class` slots as `u64`, so Bun hands us full-precision
+ * bigints directly — no `Pointer` round-trip and no tagged-pointer truncation
+ * (D029).
  */
 export type CocoaRuntime = {
   readonly selectors: SelectorCache;
@@ -36,10 +38,9 @@ export const cocoa = (): CocoaRuntime => {
   const ffi = loadCocoaFFI();
 
   cached = {
-    selectors: new SelectorCache((name) => bigIntOut(ffi.symbols.sel_registerName(cstr(name)))),
-    classes: new ClassCache((name) => bigIntOut(ffi.symbols.objc_getClass(cstr(name)))),
-    msgSend: (receiver, selector) =>
-      bigIntOut(ffi.symbols.objc_msgSend(ptrIn(receiver), ptrIn(selector))),
+    selectors: new SelectorCache((name) => ffi.symbols.sel_registerName(cstr(name))),
+    classes: new ClassCache((name) => ffi.symbols.objc_getClass(cstr(name))),
+    msgSend: (receiver, selector) => ffi.symbols.objc_msgSend(receiver, selector),
   };
   return cached;
 };

@@ -62,18 +62,22 @@ export const loadCocoaFFI = () => {
     appKitLib = dlopen(APPKIT_PATH, APPKIT_SYMBOLS);
   }
 
+  // ObjC handles (id/SEL/Class) are declared u64, not pointer: tagged-pointer
+  // objects (short NSString/NSNumber/NSDate) set high bits that exceed 2^53,
+  // which FFIType.pointer would truncate to a corrupt f64. u64 preserves the
+  // full 64-bit handle as a bigint. See D029.
   return dlopen(LIBOBJC_PATH, {
     sel_registerName: {
       args: [FFIType.cstring],
-      returns: FFIType.pointer,
+      returns: FFIType.u64,
     },
     objc_getClass: {
       args: [FFIType.cstring],
-      returns: FFIType.pointer,
+      returns: FFIType.u64,
     },
     objc_msgSend: {
-      args: [FFIType.pointer, FFIType.pointer],
-      returns: FFIType.pointer,
+      args: [FFIType.u64, FFIType.u64],
+      returns: FFIType.u64,
     },
   });
 };
