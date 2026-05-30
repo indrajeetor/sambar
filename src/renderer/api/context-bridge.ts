@@ -16,10 +16,9 @@ export type ContextBridge = {
 /** Create the `contextBridge` object bound to the current page's global. */
 export const createContextBridge = (): ContextBridge => ({
   exposeInMainWorld(key, api) {
-    const target = globalThis as Record<string, unknown>;
-    if (key in target) {
+    if (Object.hasOwn(globalThis, key)) {
       throw new SambarError(`contextBridge: "${key}" is already defined in the main world`);
     }
-    target[key] = Object.freeze({ ...api });
+    Reflect.set(globalThis, key, Object.freeze({ ...api }));
   },
 });

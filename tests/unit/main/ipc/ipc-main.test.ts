@@ -22,7 +22,7 @@ beforeEach(() => {
 
 describe('ipcMain.on / dispatch send', () => {
   test('invokes a registered listener with the event and args', async () => {
-    const calls: unknown[][] = [];
+    const calls: Array<readonly unknown[]> = [];
     ipc.on('ping', (_e, ...args) => calls.push(args));
     await ipc.dispatch(send('ping', 1, 'two'), event);
     expect(calls).toEqual([[1, 'two']]);

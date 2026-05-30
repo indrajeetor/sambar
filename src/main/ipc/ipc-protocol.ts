@@ -66,7 +66,7 @@ export const decodeEnvelope = (raw: string): IpcEnvelope => {
     throw new InvalidArgumentError('IPC message must be an object');
   }
 
-  const { kind } = parsed;
+  const kind = parsed['kind'];
   if (kind === 'send') {
     return { kind: 'send', channel: requireChannel(parsed), args: requireArgs(parsed) };
   }
@@ -85,36 +85,41 @@ export const decodeEnvelope = (raw: string): IpcEnvelope => {
 };
 
 const requireChannel = (o: Record<string, unknown>): string => {
-  if (typeof o.channel !== 'string') {
+  const channel = o['channel'];
+  if (typeof channel !== 'string') {
     throw new InvalidArgumentError('IPC envelope is missing a string channel');
   }
-  return o.channel;
+  return channel;
 };
 
 const requireArgs = (o: Record<string, unknown>): readonly unknown[] => {
-  if (!Array.isArray(o.args)) {
+  const args = o['args'];
+  if (!Array.isArray(args)) {
     throw new InvalidArgumentError('IPC envelope args must be an array');
   }
-  return o.args;
+  return args;
 };
 
 const requireId = (o: Record<string, unknown>): number => {
-  if (typeof o.id !== 'number') {
+  const id = o['id'];
+  if (typeof id !== 'number') {
     throw new InvalidArgumentError('IPC envelope is missing a numeric id');
   }
-  return o.id;
+  return id;
 };
 
 const decodeReply = (o: Record<string, unknown>): ReplyEnvelope => {
   const id = requireId(o);
-  if (o.ok === true) {
-    return { kind: 'reply', id, ok: true, result: o.result };
+  const ok = o['ok'];
+  if (ok === true) {
+    return { kind: 'reply', id, ok: true, result: o['result'] };
   }
-  if (o.ok === false) {
-    if (typeof o.error !== 'string') {
+  if (ok === false) {
+    const error = o['error'];
+    if (typeof error !== 'string') {
       throw new InvalidArgumentError('IPC error reply is missing a string error');
     }
-    return { kind: 'reply', id, ok: false, error: o.error };
+    return { kind: 'reply', id, ok: false, error };
   }
   throw new InvalidArgumentError('IPC reply envelope is missing a boolean ok');
 };
