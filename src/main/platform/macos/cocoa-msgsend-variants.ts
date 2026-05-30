@@ -1,6 +1,5 @@
-import { type Pointer, dlopen, FFIType } from 'bun:ffi';
-import { UnsupportedPlatformError } from '../../../common/errors';
-import { currentPlatform } from '../../../common/platform';
+import { dlopen, FFIType } from 'bun:ffi';
+import { bigIntOut, LIBOBJC_PATH, macOSLibraryAccessor, ptrIn } from './objc';
 
 /**
  * Typed `objc_msgSend` variants for selectors whose signatures don't match
@@ -11,27 +10,6 @@ import { currentPlatform } from '../../../common/platform';
  * with a different signature. dyld dedupes the underlying image; the cost is
  * one extra `Library` wrapper object per variant.
  */
-
-const LIBOBJC_PATH = 'libobjc.A.dylib';
-
-/**
- * Returns an accessor that lazily opens a macOS-only library and caches the
- * resulting handle. The accessor throws {@link SambarError} on any non-macOS
- * host. Used to factor out the platform-check + lazy-`dlopen` pattern shared
- * by every variant in this module.
- */
-const macOSLibraryAccessor = <T>(name: string, open: () => T): (() => T) => {
-  let cached: T | undefined;
-  return () => {
-    if (currentPlatform() !== 'macos') {
-      throw new UnsupportedPlatformError(`${name} is only supported on macOS`);
-    }
-    if (cached === undefined) {
-      cached = open();
-    }
-    return cached;
-  };
-};
 
 const INIT_WITH_CONTENT_RECT_VARIANT = {
   objc_msgSend: {
@@ -100,9 +78,6 @@ const getI64Lib = macOSLibraryAccessor('msgSendI64', () => dlopen(LIBOBJC_PATH, 
 const getReturnsU8Lib = macOSLibraryAccessor('msgSendReturnsU8', () =>
   dlopen(LIBOBJC_PATH, RETURNS_U8_VARIANT),
 );
-
-const ptrIn = (n: bigint): Pointer => Number(n) as Pointer;
-const bigIntOut = (p: Pointer | null): bigint => (p === null ? 0n : BigInt(p));
 
 export type CGRectArgs = readonly [x: number, y: number, width: number, height: number];
 

@@ -1,10 +1,10 @@
 import { dlopen, FFIType } from 'bun:ffi';
 import { UnsupportedPlatformError } from '../../../common/errors';
 import { currentPlatform } from '../../../common/platform';
+import { LIBOBJC_PATH } from './objc';
 
 const FOUNDATION_PATH = '/System/Library/Frameworks/Foundation.framework/Foundation';
 const APPKIT_PATH = '/System/Library/Frameworks/AppKit.framework/AppKit';
-const LIBOBJC_PATH = 'libobjc.A.dylib';
 
 const FOUNDATION_SYMBOLS = {
   NSGetSizeAndAlignment: {
