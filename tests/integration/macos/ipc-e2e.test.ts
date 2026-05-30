@@ -7,13 +7,6 @@ import type { NativeApplication, NativeWindow } from '../../../src/main/platform
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Full IPC round-trip over a real WKWebView: the preload bootstrap runs in the
- * page, the page calls `__sambar.*`, the envelope reaches the native script
- * message handler, ipcMain handles it, and replies are delivered back via
- * `evaluateJavaScript`. We observe page-side results by having the page post
- * them back on another channel; assertions poll rather than assume fixed timing.
- */
 if (currentPlatform() === 'macos') {
   describe('IPC end-to-end over a real webview', () => {
     let app: NativeApplication;
@@ -29,21 +22,28 @@ if (currentPlatform() === 'macos') {
       app.quit();
     });
 
-    /** Resolve once `predicate` sees a delivered envelope, or after `timeoutMs`. */
-    const waitForEnvelope = async (
-      received: string[],
+    /**
+     * Re-run `injectJs` every poll until an envelope matching `predicate`
+     * arrives. Re-injecting (rather than firing once after a fixed delay) makes
+     * the test robust to load/preload timing on slow CI runners: an injection
+     * that lands before `window.__sambar` exists simply gets retried.
+     */
+    const driveUntilEnvelope = async (
+      received: readonly string[],
+      injectJs: string,
       predicate: (env: ReturnType<typeof decodeEnvelope>) => boolean,
-      timeoutMs = 3000,
+      timeoutMs = 5000,
     ): Promise<ReturnType<typeof decodeEnvelope> | undefined> => {
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
+        win.webContents.executeJavaScript(`if (window.__sambar) { ${injectJs} }`);
+        await delay(100);
         for (const json of received) {
           const env = decodeEnvelope(json);
           if (predicate(env)) {
             return env;
           }
         }
-        await delay(50);
       }
       return undefined;
     };
@@ -51,13 +51,11 @@ if (currentPlatform() === 'macos') {
     test('renderer -> main: postMessage reaches the native script message handler', async () => {
       const received: string[] = [];
       win.webContents.onRendererEnvelope((json) => received.push(json));
-
       win.webContents.loadHTML('<html><body>ipc</body></html>', 'about:blank');
-      await delay(300);
-      win.webContents.executeJavaScript("window.__sambar.send('hello', 1, 2);");
 
-      const env = await waitForEnvelope(
+      const env = await driveUntilEnvelope(
         received,
+        "window.__sambar.send('hello', 1, 2);",
         (e) => e.kind === 'send' && e.channel === 'hello',
       );
       expect(env).toMatchObject({ kind: 'send', channel: 'hello', args: [1, 2] });
@@ -78,17 +76,13 @@ if (currentPlatform() === 'macos') {
           }
         }
       });
-
       win.webContents.loadHTML('<html><body>ipc</body></html>', 'about:blank');
-      await delay(300);
 
-      // Page invokes 'add', then posts the resolved value back on 'result'.
-      win.webContents.executeJavaScript(
-        "window.__sambar.invoke('add', 20, 22).then(function (r) { window.__sambar.send('result', r); });",
-      );
-
-      const env = await waitForEnvelope(
+      // Invoke 'add' once the bridge exists; post the resolved value back on
+      // 'result'. A guard flag keeps the retry from invoking repeatedly.
+      const env = await driveUntilEnvelope(
         received,
+        "if (!window.__sentInvoke) { window.__sentInvoke = true; window.__sambar.invoke('add', 20, 22).then(function (r) { window.__sambar.send('result', r); }); }",
         (e) => e.kind === 'send' && e.channel === 'result',
       );
       expect(env).toMatchObject({ kind: 'send', channel: 'result', args: [42] });
