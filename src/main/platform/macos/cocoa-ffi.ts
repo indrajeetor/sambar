@@ -1,5 +1,5 @@
 import { dlopen, FFIType } from 'bun:ffi';
-import { SambarError } from '../../../common/errors';
+import { UnsupportedPlatformError } from '../../../common/errors';
 import { currentPlatform } from '../../../common/platform';
 
 const FOUNDATION_PATH = '/System/Library/Frameworks/Foundation.framework/Foundation';
@@ -49,7 +49,7 @@ let appKitLib: unknown;
 export const loadCocoaFFI = () => {
   const platform = currentPlatform();
   if (platform !== 'macos') {
-    throw new SambarError(
+    throw new UnsupportedPlatformError(
       `loadCocoaFFI() is only supported on macOS; current platform is ${platform}`,
     );
   }

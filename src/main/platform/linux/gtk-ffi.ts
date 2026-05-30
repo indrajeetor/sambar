@@ -1,5 +1,5 @@
 import { dlopen, FFIType } from 'bun:ffi';
-import { SambarError } from '../../../common/errors';
+import { UnsupportedPlatformError } from '../../../common/errors';
 import { currentPlatform } from '../../../common/platform';
 
 const LIBGTK_PATH = 'libgtk-4.so.1';
@@ -17,7 +17,7 @@ const LIBGTK_PATH = 'libgtk-4.so.1';
 export const loadGtkFFI = () => {
   const platform = currentPlatform();
   if (platform !== 'linux') {
-    throw new SambarError(
+    throw new UnsupportedPlatformError(
       `loadGtkFFI() is only supported on Linux; current platform is ${platform}`,
     );
   }

@@ -1,5 +1,5 @@
 import { type Pointer, dlopen, FFIType } from 'bun:ffi';
-import { SambarError } from '../../../common/errors';
+import { UnsupportedPlatformError } from '../../../common/errors';
 import { currentPlatform } from '../../../common/platform';
 
 /**
@@ -24,7 +24,7 @@ const macOSLibraryAccessor = <T>(name: string, open: () => T): (() => T) => {
   let cached: T | undefined;
   return () => {
     if (currentPlatform() !== 'macos') {
-      throw new SambarError(`${name} is only supported on macOS`);
+      throw new UnsupportedPlatformError(`${name} is only supported on macOS`);
     }
     if (cached === undefined) {
       cached = open();

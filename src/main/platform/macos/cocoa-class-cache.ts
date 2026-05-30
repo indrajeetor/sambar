@@ -1,4 +1,4 @@
-import { SambarError } from '../../../common/errors';
+import { FFIError } from '../../../common/errors';
 
 /**
  * Memoising wrapper around Objective-C's `objc_getClass`.
@@ -33,7 +33,7 @@ export class ClassCache {
     }
     const fresh = this.#resolver(name);
     if (fresh === 0n) {
-      throw new SambarError(`Objective-C class not found: ${name}`);
+      throw new FFIError(`Objective-C class not found: ${name}`);
     }
     this.#cache.set(name, fresh);
     return fresh;
