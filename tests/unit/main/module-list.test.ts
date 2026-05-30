@@ -31,9 +31,16 @@ describe('IMPLEMENTED_MODULES', () => {
     }
   });
 
-  test('does not yet claim Tier-3 modules like Menu or Tray', () => {
-    expect(implemented).not.toContain('Menu');
+  test('claims the Tier-2 modules Sambar now ships', () => {
+    expect(implemented).toContain('Menu');
+    expect(implemented).toContain('MenuItem');
+    expect(implemented).toContain('dialog');
+    expect(implemented).toContain('shell');
+  });
+
+  test('does not yet claim still-unshipped modules like Tray', () => {
     expect(implemented).not.toContain('Tray');
+    expect(implemented).not.toContain('Notification');
   });
 });
 
@@ -42,8 +49,12 @@ describe('isImplemented', () => {
     expect(isImplemented('app')).toBe(true);
   });
 
+  test('is true for a newly shipped Tier-2 module', () => {
+    expect(isImplemented('Menu')).toBe(true);
+  });
+
   test('is false for a known-but-unshipped module', () => {
-    expect(isImplemented('Menu')).toBe(false);
+    expect(isImplemented('Tray')).toBe(false);
   });
 
   test('is false for an unknown name', () => {
@@ -53,8 +64,8 @@ describe('isImplemented', () => {
 
 describe('notImplementedMessage', () => {
   test('names the module and the project', () => {
-    const message = notImplementedMessage('Menu');
-    expect(message).toMatch(/Menu/);
+    const message = notImplementedMessage('Tray');
+    expect(message).toMatch(/Tray/);
     expect(message).toMatch(/Sambar/);
     expect(message).toMatch(/not yet implemented/i);
   });
