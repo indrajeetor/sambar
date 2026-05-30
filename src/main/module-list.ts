@@ -65,6 +65,7 @@ export const IMPLEMENTED_MODULES = [
   'Menu',
   'MenuItem',
   'nativeTheme',
+  'shell',
 ] as const;
 
 const implemented: ReadonlySet<string> = new Set(IMPLEMENTED_MODULES);

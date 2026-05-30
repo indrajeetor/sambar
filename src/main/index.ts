@@ -18,6 +18,7 @@ export {
   type MenuItemType,
 } from './api/menu';
 export { nativeTheme, type NativeTheme } from './api/native-theme';
+export { shell, type Shell } from './api/shell';
 export {
   FFIError,
   InvalidArgumentError,
