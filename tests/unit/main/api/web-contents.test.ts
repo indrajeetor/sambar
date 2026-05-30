@@ -1,0 +1,103 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { ipcMain } from '../../../../src/main/api/ipc-main';
+import { resetWebContentsIdsForTesting, WebContents } from '../../../../src/main/api/web-contents';
+import { decodeEnvelope, encodeEnvelope } from '../../../../src/main/ipc/ipc-protocol';
+import type { NativeWebContents } from '../../../../src/main/platform/native';
+
+const makeFakeNative = (): {
+  native: NativeWebContents;
+  sent: string[];
+  fireRenderer: (json: string) => void;
+} => {
+  const sent: string[] = [];
+  let onEnvelope: ((json: string) => void) | undefined;
+  const native: NativeWebContents = {
+    loadURL: () => undefined,
+    loadHTML: () => undefined,
+    getURL: () => '',
+    executeJavaScript: () => undefined,
+    sendEnvelopeToRenderer: (json) => sent.push(json),
+    onRendererEnvelope: (cb) => {
+      onEnvelope = cb;
+    },
+  };
+  return { native, sent, fireRenderer: (json) => onEnvelope?.(json) };
+};
+
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+const reset = (): void => {
+  resetWebContentsIdsForTesting();
+  ipcMain.removeAllListeners();
+  ipcMain.removeHandler('add');
+  ipcMain.removeHandler('boom');
+};
+
+beforeEach(reset);
+afterEach(reset);
+
+describe('WebContents.send', () => {
+  test('sends a send envelope to the renderer', () => {
+    const { native, sent } = makeFakeNative();
+    new WebContents(native).send('news', 'hi', 1);
+    expect(decodeEnvelope(sent[0] ?? '')).toEqual({
+      kind: 'send',
+      channel: 'news',
+      args: ['hi', 1],
+    });
+  });
+});
+
+describe('WebContents <-> ipcMain auto-wiring', () => {
+  test('a renderer send envelope reaches an ipcMain listener with sender set', async () => {
+    const { native, fireRenderer } = makeFakeNative();
+    const wc = new WebContents(native);
+    const calls: Array<{ sender: unknown; args: unknown[] }> = [];
+    ipcMain.on('greet', (event, ...args) => calls.push({ sender: event.sender, args }));
+
+    fireRenderer(encodeEnvelope({ kind: 'send', channel: 'greet', args: ['yo'] }));
+    await flush();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.args).toEqual(['yo']);
+    expect(calls[0]?.sender).toBe(wc);
+  });
+
+  test('a renderer invoke is handled and a reply is sent back', async () => {
+    const { native, sent, fireRenderer } = makeFakeNative();
+    new WebContents(native);
+    ipcMain.handle('add', (_event, a, b) => (a as number) + (b as number));
+
+    fireRenderer(encodeEnvelope({ kind: 'invoke', id: 99, channel: 'add', args: [2, 3] }));
+    await flush();
+
+    expect(sent).toHaveLength(1);
+    expect(decodeEnvelope(sent[0] ?? '')).toEqual({ kind: 'reply', id: 99, ok: true, result: 5 });
+  });
+
+  test('a throwing handler sends an error reply', async () => {
+    const { native, sent, fireRenderer } = makeFakeNative();
+    new WebContents(native);
+    ipcMain.handle('boom', () => {
+      throw new Error('nope');
+    });
+
+    fireRenderer(encodeEnvelope({ kind: 'invoke', id: 1, channel: 'boom', args: [] }));
+    await flush();
+
+    expect(decodeEnvelope(sent[0] ?? '')).toEqual({
+      kind: 'reply',
+      id: 1,
+      ok: false,
+      error: 'nope',
+    });
+  });
+
+  test('a malformed renderer envelope is dropped without throwing', async () => {
+    const { native, sent, fireRenderer } = makeFakeNative();
+    new WebContents(native);
+    expect(() => fireRenderer('not json{')).not.toThrow();
+    await flush();
+    expect(sent).toHaveLength(0);
+  });
+});
