@@ -1,6 +1,6 @@
 {
   "name": "sambar",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "A drop-in replacement for Electron, built on Bun and system WebKit.",
   "license": "MIT",
   "author": "Indrajeet O.",
@@ -45,7 +45,8 @@
     "type-check": "tsc --noEmit",
     "test": "bun test",
     "test:watch": "bun test --watch",
-    "validate": "bun run format:check && bun run lint && bun run type-check && bun run test"
+    "validate": "bun run format:check && bun run lint && bun run type-check && bun run test",
+    "prepublishOnly": "bun run validate"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
