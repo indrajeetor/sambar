@@ -61,6 +61,8 @@ export const IMPLEMENTED_MODULES = [
   'WebContents',
   'ipcMain',
   'clipboard',
+  'Menu',
+  'MenuItem',
   'nativeTheme',
 ] as const;
 

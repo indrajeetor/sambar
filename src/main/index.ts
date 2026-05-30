@@ -4,6 +4,12 @@ export { App, app } from './api/app';
 export { BrowserWindow, type BrowserWindowOptions } from './api/browser-window';
 export { WebContents } from './api/web-contents';
 export { clipboard, type Clipboard } from './api/clipboard';
+export {
+  Menu,
+  MenuItem,
+  type MenuItemOptions,
+  type MenuItemType,
+} from './api/menu';
 export { nativeTheme, type NativeTheme } from './api/native-theme';
 export {
   FFIError,
