@@ -60,7 +60,7 @@ describe('ipcRenderer.on', () => {
 
 describe('ipcRenderer without a bridge', () => {
   test('throws a clear error if the preload bridge is absent', () => {
-    delete (globalThis as Record<string, unknown>).__sambar;
+    Reflect.deleteProperty(globalThis, '__sambar');
     expect(() => createIpcRenderer().send('x')).toThrow(/preload/i);
   });
 });

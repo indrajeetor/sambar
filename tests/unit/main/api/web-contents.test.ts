@@ -52,7 +52,7 @@ describe('WebContents <-> ipcMain auto-wiring', () => {
   test('a renderer send envelope reaches an ipcMain listener with sender set', async () => {
     const { native, fireRenderer } = makeFakeNative();
     const wc = new WebContents(native);
-    const calls: Array<{ sender: unknown; args: unknown[] }> = [];
+    const calls: Array<{ sender: unknown; args: readonly unknown[] }> = [];
     ipcMain.on('greet', (event, ...args) => calls.push({ sender: event.sender, args }));
 
     fireRenderer(encodeEnvelope({ kind: 'send', channel: 'greet', args: ['yo'] }));
