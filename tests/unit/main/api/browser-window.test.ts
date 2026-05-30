@@ -26,6 +26,8 @@ const makeFakeWindow = (options: NativeWindowOptions): FakeWindow => {
     loadHTML: () => undefined,
     getURL: () => 'about:blank',
     executeJavaScript: () => undefined,
+    sendEnvelopeToRenderer: () => undefined,
+    onRendererEnvelope: () => undefined,
   };
   return {
     webContents,

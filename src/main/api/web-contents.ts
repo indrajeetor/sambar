@@ -1,12 +1,22 @@
 import { EventEmitter } from 'node:events';
 import { isAbsolute, resolve } from 'node:path';
+import { createLogger } from '../../common/logger';
+import { decodeEnvelope, encodeEnvelope } from '../ipc/ipc-protocol';
 import type { NativeWebContents } from '../platform/native';
+import { ipcMain } from './ipc-main';
 
 /**
  * Controls and observes the content rendered inside a {@link BrowserWindow} —
  * the drop-in equivalent of Electron's `webContents`. Content methods on
  * `BrowserWindow` delegate here (D025). Extends Node {@link EventEmitter}.
+ *
+ * On construction it bridges the native web view to the {@link ipcMain}
+ * singleton: inbound renderer envelopes are routed to `ipcMain`, and any reply
+ * is sent back to the renderer — so `ipcMain.handle` + `ipcRenderer.invoke`
+ * work end-to-end with no per-window wiring.
  */
+
+const log = createLogger('web-contents');
 
 let nextId = 1;
 
@@ -25,6 +35,9 @@ export class WebContents extends EventEmitter {
     this.id = nextId;
     nextId += 1;
     this.#native = native;
+    this.#native.onRendererEnvelope((json) => {
+      void this.#handleRendererEnvelope(json);
+    });
   }
 
   /** Navigate to a URL. */
@@ -46,5 +59,27 @@ export class WebContents extends EventEmitter {
   /** Evaluate JavaScript in the page (fire-and-forget, D022). */
   executeJavaScript(code: string): void {
     this.#native.executeJavaScript(code);
+  }
+
+  /** Send an event on a channel to the renderer (`ipcRenderer.on` receives it). */
+  send(channel: string, ...args: readonly unknown[]): void {
+    this.#native.sendEnvelopeToRenderer(encodeEnvelope({ kind: 'send', channel, args }));
+  }
+
+  async #handleRendererEnvelope(json: string): Promise<void> {
+    let envelope: ReturnType<typeof decodeEnvelope>;
+    try {
+      envelope = decodeEnvelope(json);
+    } catch (error) {
+      log.warn('dropping malformed renderer envelope', error);
+      return;
+    }
+    if (envelope.kind !== 'send' && envelope.kind !== 'invoke') {
+      return;
+    }
+    const reply = await ipcMain.dispatch(envelope, { sender: this });
+    if (reply !== undefined) {
+      this.#native.sendEnvelopeToRenderer(encodeEnvelope(reply));
+    }
   }
 }

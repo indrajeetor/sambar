@@ -24,7 +24,7 @@ export type IpcRenderer = {
 };
 
 const getBridge = (): RendererBridge => {
-  const bridge = (globalThis as Record<string, unknown>).__sambar as RendererBridge | undefined;
+  const bridge = Reflect.get(globalThis, '__sambar') as RendererBridge | undefined;
   if (bridge === undefined) {
     throw new SambarError(
       'Sambar preload bridge is not available; ensure a preload script ran before renderer code',

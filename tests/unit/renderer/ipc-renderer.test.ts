@@ -27,11 +27,11 @@ beforeEach(() => {
       registered.set(channel, list);
     },
   };
-  (globalThis as Record<string, unknown>).__sambar = bridge;
+  Reflect.set(globalThis, '__sambar', bridge);
 });
 
 afterEach(() => {
-  delete (globalThis as Record<string, unknown>).__sambar;
+  Reflect.deleteProperty(globalThis, '__sambar');
 });
 
 describe('ipcRenderer.send', () => {
