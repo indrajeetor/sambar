@@ -8,7 +8,7 @@
  */
 
 import { buildLinuxApp } from './build-linux';
-import { buildMacApp } from './build-macos';
+import { type BuildMacAppOptions, buildMacApp, type SignApp } from './build-macos';
 import { type Command, parseArgs, resolveTarget } from './parse-args';
 import { runApp } from './run';
 import { currentPlatform } from '../common/platform';
@@ -36,9 +36,16 @@ build options:
   --id <bundle.id>   Bundle identifier (default: com.sambar.<name-slug>)
   --out <dir>        Output directory (default: current directory)
   --icon <path>      App icon (.icns for macOS, .png for linux)
+  --sign <identity>  Code-sign the macOS .app. Use '-' for an ad-hoc signature
+                     (no certificate), or a 'Developer ID Application: Name
+                     (TEAMID)' identity that is present in your keychain.
+  --notarize         Notarization hook (macOS, with --sign). Requires the env
+                     vars APPLE_ID, TEAM_ID and an app-specific password; this
+                     build does not submit to Apple — see the docs to release.
 
 'sambar build' produces a macOS .app or a Linux AppDir + .tar.gz + .deb.
-A macOS host can cross-build Linux with --target linux.`;
+A macOS host can cross-build Linux with --target linux.
+--sign and --notarize are macOS-only (codesign/notarytool are macOS tools).`;
 
 /** Derive a default app name from the entry path's base file name. */
 const deriveName = (entry: string): string => {
@@ -47,7 +54,20 @@ const deriveName = (entry: string): string => {
   return stem.length > 0 ? stem : 'SambarApp';
 };
 
-const runBuild = async (command: Extract<Command, { kind: 'build' }>): Promise<number> => {
+/** Argv builder + runner for the `xcrun notarytool submit` release hook. */
+type NotarizeHook = (appPath: string) => Promise<void>;
+
+/** Injectable seams so `dispatch` is unit-testable without shelling out. */
+export type DispatchDeps = {
+  readonly buildMac?: (opts: BuildMacAppOptions) => Promise<string>;
+  readonly signApp?: SignApp;
+  readonly notarize?: NotarizeHook;
+};
+
+const runBuild = async (
+  command: Extract<Command, { kind: 'build' }>,
+  deps: DispatchDeps,
+): Promise<number> => {
   const target = resolveTarget(command.options.target);
   // Only macOS hosts can produce a macOS .app; Linux distributables cross-build
   // from macOS (and build natively on Linux).
@@ -55,6 +75,18 @@ const runBuild = async (command: Extract<Command, { kind: 'build' }>): Promise<n
     err(`sambar build: --target macos requires a macOS host (this host is ${currentPlatform()}).`);
     return 1;
   }
+  // codesign/notarytool are macOS tools and only meaningful for the macOS .app.
+  if (command.options.sign !== undefined && (target !== 'macos' || currentPlatform() !== 'macos')) {
+    err('sambar build: --sign is macOS-only (codesign), with a macOS target on a macOS host.');
+    return 1;
+  }
+  if (command.options.notarize === true && (target !== 'macos' || currentPlatform() !== 'macos')) {
+    err(
+      'sambar build: --notarize is macOS-only (notarytool), with a macOS target on a macOS host.',
+    );
+    return 1;
+  }
+
   const name = command.options.name ?? deriveName(command.entry);
   if (target === 'linux') {
     const result = await buildLinuxApp({
@@ -69,19 +101,50 @@ const runBuild = async (command: Extract<Command, { kind: 'build' }>): Promise<n
     out(result.deb);
     return 0;
   }
-  const appPath = await buildMacApp({
+
+  const buildMac = deps.buildMac ?? buildMacApp;
+  const appPath = await buildMac({
     entry: command.entry,
     name,
     ...(command.options.id !== undefined ? { id: command.options.id } : {}),
     ...(command.options.out !== undefined ? { out: command.options.out } : {}),
     ...(command.options.icon !== undefined ? { icon: command.options.icon } : {}),
+    ...(command.options.sign !== undefined ? { sign: command.options.sign } : {}),
+    ...(deps.signApp !== undefined ? { signApp: deps.signApp } : {}),
   });
   out(appPath);
+
+  // Notarization is a documented release HOOK: without Apple credentials we
+  // print guidance and do NOT submit to Apple.
+  if (command.options.notarize === true) {
+    const creds = notarizeCredentials();
+    if (creds === undefined) {
+      err(
+        'sambar build: notarization requires APPLE_ID/TEAM_ID and an app-specific password ' +
+          '(env SAMBAR_NOTARIZE_PASSWORD) — see docs. Skipping notarization.',
+      );
+    } else if (deps.notarize !== undefined) {
+      await deps.notarize(appPath);
+    }
+  }
   return 0;
 };
 
+/** Read notarization credentials from the environment, or undefined if incomplete. */
+const notarizeCredentials = ():
+  | { readonly appleId: string; readonly teamId: string; readonly password: string }
+  | undefined => {
+  const appleId = process.env['APPLE_ID'];
+  const teamId = process.env['TEAM_ID'];
+  const password = process.env['SAMBAR_NOTARIZE_PASSWORD'];
+  if (appleId === undefined || teamId === undefined || password === undefined) {
+    return undefined;
+  }
+  return { appleId, teamId, password };
+};
+
 /** Execute a parsed {@link Command} and resolve to the process exit code. */
-export const dispatch = async (command: Command): Promise<number> => {
+export const dispatch = async (command: Command, deps: DispatchDeps = {}): Promise<number> => {
   switch (command.kind) {
     case 'help':
       out(USAGE);
@@ -92,7 +155,7 @@ export const dispatch = async (command: Command): Promise<number> => {
     case 'run':
       return await runApp(command.entry, command.args);
     case 'build':
-      return await runBuild(command);
+      return await runBuild(command, deps);
     case 'error':
       err(command.message);
       err('');
