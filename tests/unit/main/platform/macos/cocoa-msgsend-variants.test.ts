@@ -4,6 +4,7 @@ import { currentPlatform } from '../../../../../src/common/platform';
 import {
   msgSendF64,
   msgSendI64,
+  msgSendI64Ptr,
   msgSendInitWithContentRect,
   msgSendPtr,
   msgSendPtr4,
@@ -42,6 +43,12 @@ describe('msgSendF64 export', () => {
 describe('msgSendI64 export', () => {
   test('is a function', () => {
     expect(typeof msgSendI64).toBe('function');
+  });
+});
+
+describe('msgSendI64Ptr export', () => {
+  test('is a function', () => {
+    expect(typeof msgSendI64Ptr).toBe('function');
   });
 });
 
@@ -111,6 +118,12 @@ if (currentPlatform() !== 'macos') {
   describe('msgSendI64 on non-macOS hosts', () => {
     test('throws SambarError', () => {
       expect(() => msgSendI64(0n, 0n, 0n)).toThrow(SambarError);
+    });
+  });
+
+  describe('msgSendI64Ptr on non-macOS hosts', () => {
+    test('throws SambarError', () => {
+      expect(() => msgSendI64Ptr(0n, 0n, 0n, 0n)).toThrow(SambarError);
     });
   });
 

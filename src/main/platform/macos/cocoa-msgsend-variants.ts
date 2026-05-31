@@ -440,6 +440,32 @@ export const msgSendPtrI64 = (
   arg1: bigint,
 ): Handle => getPtrI64Lib().symbols.objc_msgSend(receiver, selector, arg0, arg1);
 
+const I64_PTR_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.u64, FFIType.u64, FFIType.i64, FFIType.u64],
+    returns: FFIType.u64,
+  },
+} as const;
+
+const getI64PtrLib = macOSLibraryAccessor('msgSendI64Ptr', () =>
+  dlopen(LIBOBJC_PATH, I64_PTR_VARIANT),
+);
+
+/**
+ * Send a message with an `NSInteger` arg followed by a trailing pointer arg —
+ * specifically `[NSBitmapImageRep representationUsingType:(NSBitmapImageFileType)
+ * properties:(NSDictionary*)]` (the file-type enum then a nullable properties
+ * dictionary).
+ *
+ * Only callable on macOS — throws {@link UnsupportedPlatformError} otherwise.
+ */
+export const msgSendI64Ptr = (
+  receiver: Handle,
+  selector: Handle,
+  arg0: bigint,
+  arg1: Handle,
+): Handle => getI64PtrLib().symbols.objc_msgSend(receiver, selector, arg0, arg1);
+
 const PTR_I64_PTR_VARIANT = {
   objc_msgSend: {
     args: [FFIType.u64, FFIType.u64, FFIType.u64, FFIType.i64, FFIType.u64],
