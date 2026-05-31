@@ -20,8 +20,13 @@ export type WebPreferences = {
   /**
    * Path to a JavaScript file run before the page's own scripts, after the
    * built-in `window.__sambar` bridge. Resolved to an absolute path and read
-   * synchronously at window construction. Shares the page world (context
-   * isolation is a separate increment).
+   * synchronously at window construction.
+   *
+   * Runs in a dedicated ISOLATED JavaScript world (Electron
+   * `contextIsolation: true`): it shares the page's DOM but has its own global,
+   * so `window.__sambar`, `ipcRenderer`, and anything the preload defines are
+   * invisible to page scripts. Use `contextBridge.exposeInMainWorld` to expose a
+   * controlled, async, structured-clone-copyable surface to the page.
    */
   readonly preload?: string;
 };

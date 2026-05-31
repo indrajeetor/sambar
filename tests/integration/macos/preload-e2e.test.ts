@@ -3,15 +3,18 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { currentPlatform } from '../../../src/common/platform';
-import { decodeEnvelope } from '../../../src/main/ipc/ipc-protocol';
+import { decodeEnvelope, encodeEnvelope } from '../../../src/main/ipc/ipc-protocol';
 import { createMacOSApplication } from '../../../src/main/platform/macos/cocoa-backend';
 import type { NativeApplication, NativeWindow } from '../../../src/main/platform/native';
 
 /**
  * End-to-end proof that `webPreferences.preload` runs at document-start AFTER
- * the built-in bridge, against a real WKWebView. The preload records whether
- * `window.__sambar` existed when it ran and posts that back over IPC — proving
- * bridge-before-preload ordering.
+ * the built-in bridge, in the ISOLATED world, against a real WKWebView.
+ *
+ * The preload records whether `window.__sambar` existed when it ran, then (on a
+ * `go` trigger dispatched into the isolated world) posts that back over IPC —
+ * proving both bridge-before-preload ordering and that the preload shares the
+ * isolated world with the bridge.
  */
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,14 +27,16 @@ if (currentPlatform() === 'macos') {
 
     beforeAll(() => {
       dir = mkdtempSync(join(tmpdir(), 'sambar-preload-e2e-'));
-      // The preload runs before page scripts; it captures whether the bridge
-      // is present at that instant on a global so a later poll can post it back.
+      // The preload runs in the isolated world before page scripts; it captures
+      // whether the bridge is present at that instant, and on 'go' posts it back.
       const preloadSource = [
         'window.__sambarPreloadRan = true;',
         'window.__sambarBridgeAtPreload = typeof window.__sambar !== "undefined";',
+        "window.__sambar.on('go', function () {",
+        "  window.__sambar.send('preload-check', window.__sambarPreloadRan === true, window.__sambarBridgeAtPreload === true);",
+        '});',
       ].join('\n');
-      const preloadPath = join(dir, 'preload.js');
-      writeFileSync(preloadPath, preloadSource);
+      writeFileSync(join(dir, 'preload.js'), preloadSource);
 
       app = createMacOSApplication();
       app.start();
@@ -49,19 +54,17 @@ if (currentPlatform() === 'macos') {
       rmSync(dir, { recursive: true, force: true });
     });
 
-    /**
-     * Re-run `injectJs` every poll until an envelope matching `predicate`
-     * arrives, robust to load/preload timing on slow CI runners.
-     */
     const driveUntilEnvelope = async (
       received: readonly string[],
-      injectJs: string,
+      triggerChannel: string,
       predicate: (env: ReturnType<typeof decodeEnvelope>) => boolean,
       timeoutMs = 5000,
     ): Promise<ReturnType<typeof decodeEnvelope> | undefined> => {
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
-        win.webContents.executeJavaScript(`if (window.__sambar) { ${injectJs} }`);
+        win.webContents.sendEnvelopeToRenderer(
+          encodeEnvelope({ kind: 'send', channel: triggerChannel, args: [] }),
+        );
         await delay(100);
         for (const json of received) {
           const env = decodeEnvelope(json);
@@ -80,7 +83,7 @@ if (currentPlatform() === 'macos') {
 
       const env = await driveUntilEnvelope(
         received,
-        "window.__sambar.send('preload-check', window.__sambarPreloadRan === true, window.__sambarBridgeAtPreload === true);",
+        'go',
         (e) => e.kind === 'send' && e.channel === 'preload-check',
       );
       // args[0] = preload executed; args[1] = bridge was available when it ran.

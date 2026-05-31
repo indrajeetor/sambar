@@ -1,45 +1,168 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { createContextBridge } from '../../../src/renderer/api/context-bridge';
+import { describe, expect, test } from 'bun:test';
+import {
+  type ContextBridgeTransport,
+  createContextBridge,
+} from '../../../src/renderer/api/context-bridge';
+import {
+  announceChannel,
+  type CustomEventCtor,
+  type EventScope,
+  generatePageWorldStub,
+  replyChannel,
+} from '../../../src/renderer/api/cross-world-bridge';
 
-const KEYS = ['electronAPI', 'myApi'] as const;
+/**
+ * Cross-world contextBridge proven WITHOUT a renderer: a single mock `document`
+ * (a shared EventTarget) plays the channel both worlds dispatch on. The page
+ * scope runs the generated page-world stub; the isolated scope runs
+ * `exposeInMainWorld`. The page scope NEVER holds a reference to the real
+ * handler — only the cloned values cross the DOM.
+ */
 
-const clear = (): void => {
-  for (const key of KEYS) {
-    Reflect.deleteProperty(globalThis, key);
+/** A minimal shared event bus standing in for `document`. */
+class MockDocument implements EventScope {
+  readonly #listeners = new Map<string, Array<(e: { detail?: unknown }) => void>>();
+
+  addEventListener(type: string, listener: (e: { detail?: unknown }) => void): void {
+    const list = this.#listeners.get(type) ?? [];
+    list.push(listener);
+    this.#listeners.set(type, list);
+  }
+
+  dispatchEvent(event: { type: string; detail?: unknown }): boolean {
+    for (const listener of this.#listeners.get(event.type) ?? []) {
+      listener({ detail: event.detail });
+    }
+    return true;
+  }
+}
+
+/** A CustomEvent shim carrying type + detail. */
+const MockCustomEvent: CustomEventCtor = class {
+  readonly type: string;
+  readonly detail?: unknown;
+  constructor(type: string, init?: { detail?: unknown }) {
+    this.type = type;
+    this.detail = init?.detail;
   }
 };
 
-beforeEach(clear);
-afterEach(clear);
+const CHANNEL = '__test_channel';
 
-const read = (key: string): unknown => Reflect.get(globalThis, key);
+/** A page world: the `window`-like global plus a typed read of `window[key]`. */
+type PageWorld = {
+  /** Read a materialised surface off the page `window` (avoids index-signature access). */
+  read<T>(key: string): T;
+};
 
-describe('contextBridge.exposeInMainWorld', () => {
-  test('installs the API object on the global under the given key', () => {
-    createContextBridge().exposeInMainWorld('electronAPI', { ping: () => 'pong' });
-    const api = read('electronAPI') as { ping: () => string };
-    expect(api.ping()).toBe('pong');
+/**
+ * Build a "page world": a fresh `window`-like global running the generated stub
+ * source, wired to the shared mock document + CustomEvent. The returned `read`
+ * accessor exposes whatever `window[key]` materialises.
+ */
+const makePageWorld = (doc: MockDocument): PageWorld => {
+  const win: Record<string, unknown> = {};
+  // The stub references `document`, `window`, `Map`, `Promise`, `CustomEvent`,
+  // `Object`, `Array`. Provide them via the Function scope.
+  const factory = new Function(
+    'window',
+    'document',
+    'CustomEvent',
+    'Map',
+    'Promise',
+    'Object',
+    'Array',
+    generatePageWorldStub(CHANNEL),
+  );
+  factory(win, doc, MockCustomEvent, Map, Promise, Object, Array);
+  return { read: <T>(key: string): T => win[key] as T };
+};
+
+const transport = (doc: MockDocument): ContextBridgeTransport => ({
+  channelId: CHANNEL,
+  scope: doc,
+  CustomEventImpl: MockCustomEvent,
+});
+
+describe('contextBridge.exposeInMainWorld (cross-world)', () => {
+  test('throws when no cross-world channel is available', () => {
+    expect(() => createContextBridge().exposeInMainWorld('x', { a: 1 })).toThrow(/channel/i);
   });
 
-  test('the exposed object is frozen', () => {
-    createContextBridge().exposeInMainWorld('myApi', { value: 1 });
-    expect(Object.isFrozen(read('myApi'))).toBe(true);
+  test('throws if the key is already exposed', () => {
+    const doc = new MockDocument();
+    const bridge = createContextBridge(transport(doc));
+    bridge.exposeInMainWorld('api', { a: () => 1 });
+    expect(() => bridge.exposeInMainWorld('api', { b: () => 2 })).toThrow(/already/i);
   });
 
-  test('throws if the key is already taken', () => {
-    const bridge = createContextBridge();
-    bridge.exposeInMainWorld('myApi', { a: 1 });
-    expect(() => bridge.exposeInMainWorld('myApi', { b: 2 })).toThrow(/already/i);
+  test('page method resolves to the isolated handler return value', async () => {
+    const doc = new MockDocument();
+    const page = makePageWorld(doc);
+    createContextBridge(transport(doc)).exposeInMainWorld('myApi', {
+      add: (a: number, b: number) => a + b,
+    });
+    const api = page.read<{ add: (a: number, b: number) => Promise<number> }>('myApi');
+    expect(api).toBeDefined();
+    await expect(api.add(20, 22)).resolves.toBe(42);
   });
 
-  test('preserves functions so the renderer can call them', () => {
-    let called = 0;
-    createContextBridge().exposeInMainWorld('myApi', {
-      doThing: () => {
-        called += 1;
+  test('async (Promise-returning) handlers are awaited and resolved', async () => {
+    const doc = new MockDocument();
+    const page = makePageWorld(doc);
+    createContextBridge(transport(doc)).exposeInMainWorld('myApi', {
+      later: () => Promise.resolve('done'),
+    });
+    const api = page.read<{ later: () => Promise<string> }>('myApi');
+    await expect(api.later()).resolves.toBe('done');
+  });
+
+  test('a throwing handler rejects the page-side promise with its message', async () => {
+    const doc = new MockDocument();
+    const page = makePageWorld(doc);
+    createContextBridge(transport(doc)).exposeInMainWorld('myApi', {
+      boom: () => {
+        throw new Error('kaboom');
       },
     });
-    (read('myApi') as { doThing: () => void }).doThing();
-    expect(called).toBe(1);
+    const api = page.read<{ boom: () => Promise<never> }>('myApi');
+    await expect(api.boom()).rejects.toThrow('kaboom');
+  });
+
+  test('non-function values are deep-cloned + frozen into the page object', () => {
+    const doc = new MockDocument();
+    const page = makePageWorld(doc);
+    const source = { nested: { n: 1 } };
+    createContextBridge(transport(doc)).exposeInMainWorld('myApi', { data: source, version: 3 });
+    const api = page.read<{ data: { nested: { n: number } }; version: number }>('myApi');
+    expect(api.version).toBe(3);
+    expect(api.data).toEqual({ nested: { n: 1 } });
+    // Cloned, not the same reference (no live object refs cross the boundary).
+    expect(api.data).not.toBe(source);
+  });
+
+  test('the page object is frozen (tamper-resistant)', () => {
+    const doc = new MockDocument();
+    const page = makePageWorld(doc);
+    createContextBridge(transport(doc)).exposeInMainWorld('myApi', { ping: () => 'pong' });
+    expect(Object.isFrozen(page.read('myApi'))).toBe(true);
+  });
+
+  test('the page world never holds a reference to the real handler', () => {
+    const doc = new MockDocument();
+    const page = makePageWorld(doc);
+    const realHandler = (): string => 'secret';
+    createContextBridge(transport(doc)).exposeInMainWorld('myApi', { ping: realHandler });
+    const api = page.read<{ ping: unknown }>('myApi');
+    // The page-side method is a generated proxy, NOT the real function.
+    expect(api.ping).not.toBe(realHandler);
+    expect(typeof api.ping).toBe('function');
+  });
+});
+
+describe('cross-world channel naming', () => {
+  test('reply and announce channels are derived from the base id', () => {
+    expect(replyChannel('c')).toBe('c:reply');
+    expect(announceChannel('c')).toBe('c:announce');
   });
 });

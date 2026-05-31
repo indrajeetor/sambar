@@ -1,4 +1,9 @@
 import { createLogger } from '../../../common/logger';
+import {
+  generateChannelId,
+  generateIsolatedChannelSetup,
+  generatePageWorldStub,
+} from '../../../renderer/api/cross-world-bridge';
 import { generatePreloadBootstrap } from '../../../renderer/preload-bootstrap';
 import { CooperativePump } from '../../run-loop';
 import type {
@@ -345,12 +350,19 @@ class MacOSApplication implements NativeApplication {
       msgSendPtr(userContentController, rt.selectors.get('addUserScript:'), userScript);
     };
 
-    // Bridge first, then the user preload, both in the isolated world so
-    // `window.__sambar` exists there when the preload runs.
+    // Per-window cross-world channel id for contextBridge (Phase B). The page
+    // stub and the isolated host both bake it in at inject time.
+    const channelId = generateChannelId();
+
+    // Isolated world: record the channel id, then the bridge, then the user
+    // preload — so `window.__sambar` and the channel id exist when it runs.
+    addUserScript(generateIsolatedChannelSetup(channelId), isolatedWorld);
     addUserScript(generatePreloadBootstrap(), isolatedWorld);
     if (options.preloadScript !== undefined) {
       addUserScript(options.preloadScript, isolatedWorld);
     }
+    // Page world: the cross-world stub that materialises contextBridge surfaces.
+    addUserScript(generatePageWorldStub(channelId), pageWorld());
 
     const webview = msgSendInitWithFrameConfig(
       rt.msgSend(rt.classes.get('WKWebView'), rt.selectors.get('alloc')),

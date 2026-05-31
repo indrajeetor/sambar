@@ -1,4 +1,9 @@
 import type { Pointer } from 'bun:ffi';
+import {
+  generateChannelId,
+  generateIsolatedChannelSetup,
+  generatePageWorldStub,
+} from '../../../renderer/api/cross-world-bridge';
 import { generatePreloadBootstrap } from '../../../renderer/preload-bootstrap';
 import { CooperativePump } from '../../run-loop';
 import { cstr } from '../cstr';
@@ -41,8 +46,11 @@ class LinuxWebContents implements NativeWebContents {
   readonly #rendererEnvelopeCallbacks: Array<(json: string) => void> = [];
 
   constructor(userPreloadSource?: string) {
+    const channelId = generateChannelId();
     const wired = createWebViewWithIpc({
       preloadSource: generatePreloadBootstrap(),
+      isolatedSetupSource: generateIsolatedChannelSetup(channelId),
+      pageWorldSource: generatePageWorldStub(channelId),
       ...(userPreloadSource !== undefined ? { userPreloadSource } : {}),
       onMessage: (json: string) => {
         for (const callback of this.#rendererEnvelopeCallbacks) {

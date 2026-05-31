@@ -1,24 +1,89 @@
 import { SambarError } from '../../common/errors';
+import {
+  CHANNEL_GLOBAL_KEY,
+  type CustomEventCtor,
+  type EventScope,
+  installCrossWorldHost,
+} from './cross-world-bridge';
 
 /**
- * Renderer-side `contextBridge` — the drop-in equivalent of Electron's.
+ * Renderer-side `contextBridge` — the drop-in equivalent of Electron's, with
+ * real context isolation.
  *
- * `exposeInMainWorld(key, api)` installs `api` on the page's global under `key`
- * and freezes it, so page scripts can call into the preload-defined surface
- * without being able to mutate it. (Full cross-world isolation arrives when
- * preload runs in a dedicated `WKContentWorld`; the API contract is stable now.)
+ * The preload (and this `contextBridge`) run in a dedicated isolated JS world
+ * (`WKContentWorld 'SambarPreload'` on macOS; the `SambarPreload` named world on
+ * Linux), invisible to page scripts. `exposeInMainWorld(key, api)` therefore
+ * cannot just freeze `api` onto the isolated global — the page would never see
+ * it. Instead it installs a cross-world host over a shared-`document`
+ * CustomEvent channel: a page-world stub materialises `window[key]` whose async
+ * methods dispatch request events the isolated host answers (see
+ * `cross-world-bridge.ts`).
+ *
+ * LIMITATIONS (inherent to a DOM-event boundary in pure FFI — not bugs):
+ *  - Exposed functions are ASYNC-ONLY: every page-side method returns a Promise.
+ *  - Args/returns cross via structured clone (CustomEvent `detail`): NO
+ *    functions/callbacks as arguments, NO live object references, data only.
+ *  - Non-function `api` values are deep-cloned + frozen into the page object
+ *    once at expose time; later isolated-side mutations are not reflected.
+ *  - The DOM channel is page-observable (weaker than Electron's V8 boundary);
+ *    the random channel id deters collisions, not a determined hostile page.
  */
 
 export type ContextBridge = {
   exposeInMainWorld(key: string, api: Record<string, unknown>): void;
 };
 
-/** Create the `contextBridge` object bound to the current page's global. */
-export const createContextBridge = (): ContextBridge => ({
-  exposeInMainWorld(key, api) {
-    if (Object.hasOwn(globalThis, key)) {
-      throw new SambarError(`contextBridge: "${key}" is already defined in the main world`);
-    }
-    Reflect.set(globalThis, key, Object.freeze({ ...api }));
-  },
-});
+/** Injectable transport, overridable in tests. Defaults to the real DOM. */
+export type ContextBridgeTransport = {
+  /** Per-window random channel id shared with the page-world stub. */
+  readonly channelId: string;
+  /** The shared `document` both worlds dispatch events on. */
+  readonly scope: EventScope;
+  /** The DOM `CustomEvent` constructor. */
+  readonly CustomEventImpl: CustomEventCtor;
+};
+
+const resolveTransport = (
+  override?: ContextBridgeTransport,
+): ContextBridgeTransport | undefined => {
+  if (override !== undefined) {
+    return override;
+  }
+  const channelId = Reflect.get(globalThis, CHANNEL_GLOBAL_KEY) as string | undefined;
+  const doc = Reflect.get(globalThis, 'document') as EventScope | undefined;
+  const CustomEventImpl = Reflect.get(globalThis, 'CustomEvent') as CustomEventCtor | undefined;
+  if (typeof channelId !== 'string' || doc === undefined || CustomEventImpl === undefined) {
+    return undefined;
+  }
+  return { channelId, scope: doc, CustomEventImpl };
+};
+
+/**
+ * Create the `contextBridge`. Pass a {@link ContextBridgeTransport} to drive it
+ * over a mock document in tests; in a real renderer it auto-resolves the channel
+ * id, `document`, and `CustomEvent` from the isolated world's globals.
+ */
+export const createContextBridge = (override?: ContextBridgeTransport): ContextBridge => {
+  const exposed = new Set<string>();
+  return {
+    exposeInMainWorld(key, api) {
+      if (exposed.has(key)) {
+        throw new SambarError(`contextBridge: "${key}" is already defined in the main world`);
+      }
+      const transport = resolveTransport(override);
+      if (transport === undefined) {
+        throw new SambarError(
+          'contextBridge: no cross-world channel is available; exposeInMainWorld must run in the Sambar isolated preload world',
+        );
+      }
+      installCrossWorldHost(
+        transport.channelId,
+        key,
+        api,
+        transport.scope,
+        transport.CustomEventImpl,
+      );
+      exposed.add(key);
+    },
+  };
+};

@@ -8,7 +8,11 @@ import type { NativeWindow } from '../../../src/main/platform/native';
 
 /**
  * End-to-end proof that `webPreferences.preload` runs at document-start AFTER
- * the built-in bridge on the Linux backend (real GTK4 + WebKitGTK).
+ * the built-in bridge, in the ISOLATED world, on the Linux backend (real GTK4 +
+ * WebKitGTK).
+ *
+ * The preload records whether the bridge existed when it ran and, on a 'go'
+ * trigger dispatched into the isolated world, posts that back over IPC.
  *
  * Runs only in CI ubuntu under `xvfb-run -a` with the same GPU-less env as
  * `linux-backend.test.ts`. Inert on macOS via `describe.skipIf`.
@@ -34,10 +38,14 @@ describe.skipIf(!isLinux)('Linux webPreferences.preload end-to-end', () => {
     }
 
     const dir = mkdtempSync(join(tmpdir(), 'sambar-preload-e2e-'));
-    // The preload records whether the bridge exists at the instant it runs.
+    // The preload (isolated world) records whether the bridge exists at the
+    // instant it runs, and on 'go' posts its findings back.
     const preloadSource = [
       'window.__sambarPreloadRan = true;',
       'window.__sambarBridgeAtPreload = typeof window.__sambar !== "undefined";',
+      "window.__sambar.on('go', function () {",
+      "  window.__sambar.send('preload-check', window.__sambarPreloadRan === true, window.__sambarBridgeAtPreload === true);",
+      '});',
     ].join('\n');
     writeFileSync(join(dir, 'preload.js'), preloadSource);
 
@@ -53,22 +61,31 @@ describe.skipIf(!isLinux)('Linux webPreferences.preload end-to-end', () => {
     });
     const contents = window.webContents;
 
-    let received: string | undefined;
-    contents.onRendererEnvelope((json) => {
-      received = json;
+    let didFinish = false;
+    contents.onDidFinishLoad(() => {
+      didFinish = true;
     });
 
-    // Page script (runs after preload) reports the preload's findings back.
-    const html =
-      '<!doctype html><html><body><script>' +
-      "window.__sambar.send('preload-check'," +
-      '  window.__sambarPreloadRan === true,' +
-      '  window.__sambarBridgeAtPreload === true);' +
-      '</script></body></html>';
-    contents.loadHTML(html);
+    const received: string[] = [];
+    contents.onRendererEnvelope((json) => {
+      received.push(json);
+    });
 
-    await pumpUntil(() => received !== undefined, 5000);
-    const inbound = received;
+    contents.loadHTML('<!doctype html><html><body>preload</body></html>');
+    await pumpUntil(() => didFinish, 5000);
+
+    const find = (channel: string): string | undefined =>
+      received.find((json) => {
+        const env = JSON.parse(json) as { kind: string; channel?: string };
+        return env.kind === 'send' && env.channel === channel;
+      });
+
+    await pumpUntil(() => {
+      contents.sendEnvelopeToRenderer(JSON.stringify({ kind: 'send', channel: 'go', args: [] }));
+      return find('preload-check') !== undefined;
+    }, 5000);
+
+    const inbound = find('preload-check');
     expect(inbound).toBeDefined();
     // args[0] = preload executed; args[1] = bridge was available when it ran.
     expect(JSON.parse(inbound ?? '{}')).toMatchObject({

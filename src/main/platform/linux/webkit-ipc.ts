@@ -40,13 +40,23 @@ export type WiredWebView = {
 
 /** Options for {@link createWebViewWithIpc}. */
 export type WebViewIpcOptions = {
-  /** The preload bridge source injected at document-start in all frames. */
+  /** The preload bridge source injected at document-start in the isolated world. */
   readonly preloadSource: string;
   /**
-   * Optional user preload source injected at document-start in all frames AFTER
-   * the bridge, so `window.__sambar` exists when it runs.
+   * Optional user preload source injected at document-start in the isolated
+   * world AFTER the bridge, so `window.__sambar` exists when it runs.
    */
   readonly userPreloadSource?: string;
+  /**
+   * Source injected into the ISOLATED world BEFORE the bridge (e.g. the
+   * contextBridge channel-id setup). Optional.
+   */
+  readonly isolatedSetupSource?: string;
+  /**
+   * Source injected into the PAGE/main world (world_name = NULL) — the
+   * cross-world contextBridge stub (Phase B). Optional.
+   */
+  readonly pageWorldSource?: string;
   /** Called with each JSON envelope the renderer posts. */
   readonly onMessage: (json: string) => void;
 };
@@ -71,6 +81,23 @@ const addUserScript = (ucm: Pointer, source: string): void => {
     WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
     WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
     cstr(PRELOAD_WORLD_NAME),
+    null,
+    null,
+  );
+  webkit.symbols.webkit_user_content_manager_add_script(ucm, requirePointer(script, 'user_script'));
+};
+
+/**
+ * Build a `WebKitUserScript` from `source` for the PAGE/main world (world_name =
+ * NULL) and add it at document-start in all frames — the Phase B cross-world
+ * stub injection path.
+ */
+const addPageWorldScript = (ucm: Pointer, source: string): void => {
+  const webkit = loadWebKitGtkFFI();
+  const script = webkit.symbols.webkit_user_script_new(
+    cstr(source),
+    WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+    WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
     null,
     null,
   );
@@ -109,9 +136,18 @@ export const createWebViewWithIpc = (options: WebViewIpcOptions): WiredWebView =
     cstr(PRELOAD_WORLD_NAME),
   );
 
+  // Isolated world: channel-id setup (if any) BEFORE the bridge, then the
+  // bridge, then the user preload.
+  if (options.isolatedSetupSource !== undefined) {
+    addUserScript(ucm, options.isolatedSetupSource);
+  }
   addUserScript(ucm, options.preloadSource);
   if (options.userPreloadSource !== undefined) {
     addUserScript(ucm, options.userPreloadSource);
+  }
+  // Page/main world: the cross-world contextBridge stub (Phase B).
+  if (options.pageWorldSource !== undefined) {
+    addPageWorldScript(ucm, options.pageWorldSource);
   }
 
   const view = requirePointer(

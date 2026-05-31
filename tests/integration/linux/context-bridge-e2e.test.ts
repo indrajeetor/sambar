@@ -1,0 +1,123 @@
+import { describe, expect, test } from 'bun:test';
+import { loadGtkFFI } from '../../../src/main/platform/linux/gtk-ffi';
+import { createLinuxApplication } from '../../../src/main/platform/linux/linux-backend';
+import type { NativeWindow } from '../../../src/main/platform/native';
+
+/**
+ * Phase B proof on real GTK4 + WebKitGTK 6.0: a contextBridge surface exposed in
+ * the ISOLATED `SambarPreload` world is callable from the PAGE world via the
+ * cross-world DOM channel (Promise), AND the page cannot reach `__sambar`.
+ *
+ * The backend injects the real page-world stub (world_name = NULL) and sets the
+ * channel id on the isolated global. The isolated preload wires the host over
+ * that real channel id + the production DOM protocol.
+ *
+ * Runs only in CI ubuntu under `xvfb-run -a`. Inert on macOS via
+ * `describe.skipIf`.
+ */
+
+const isLinux = process.platform === 'linux';
+
+const pump = async (ms: number): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+const pumpUntil = async (predicate: () => boolean, budgetMs: number): Promise<void> => {
+  const step = 20;
+  for (let waited = 0; waited < budgetMs && !predicate(); waited += step) {
+    await pump(step);
+  }
+};
+
+describe.skipIf(!isLinux)('Linux contextBridge cross-world proxy', () => {
+  test('page calls window.myApi.add (Promise) and cannot see __sambar', async () => {
+    if (loadGtkFFI().symbols.gtk_init_check() === 0) {
+      return;
+    }
+
+    const isolatedPreload = [
+      'var channel = globalThis.__sambarBridgeChannel;',
+      'document.addEventListener(channel, function (e) {',
+      '  var d = e.detail || {};',
+      "  if (d.key !== 'myApi' || d.method !== 'add') { return; }",
+      '  document.dispatchEvent(new CustomEvent(channel + ":reply", {',
+      '    detail: { callId: d.callId, ok: true, result: d.args[0] + d.args[1] },',
+      '  }));',
+      '});',
+      'function announce() {',
+      '  document.dispatchEvent(new CustomEvent(channel + ":announce", {',
+      "    detail: { key: 'myApi', methods: ['add'], values: { version: 7 } },",
+      '  }));',
+      '}',
+      'document.addEventListener(channel + ":ready", announce);',
+      'announce();',
+      "document.addEventListener('cb-result', function (e) {",
+      "  window.__sambar.send('cb-result', e.detail);",
+      '});',
+      "document.addEventListener('cb-sambar-typeof', function (e) {",
+      "  window.__sambar.send('cb-sambar-typeof', e.detail);",
+      '});',
+    ].join('\n');
+
+    const app = createLinuxApplication();
+    app.start();
+
+    const window: NativeWindow = app.createWindow({
+      width: 320,
+      height: 240,
+      title: 'Linux ContextBridge E2E',
+      show: true,
+      preloadScript: isolatedPreload,
+    });
+    const contents = window.webContents;
+
+    const received: string[] = [];
+    contents.onRendererEnvelope((json) => received.push(json));
+
+    let didFinish = false;
+    contents.onDidFinishLoad(() => {
+      didFinish = true;
+    });
+
+    // Page (main world) script: call the proxied method and probe __sambar.
+    const html =
+      '<!doctype html><html><body><script>' +
+      "document.dispatchEvent(new CustomEvent('cb-sambar-typeof', { detail: typeof window.__sambar }));" +
+      'if (window.myApi && typeof window.myApi.add === "function") {' +
+      '  window.myApi.add(20, 22).then(function (r) {' +
+      "    document.dispatchEvent(new CustomEvent('cb-result', { detail: { value: r, version: window.myApi.version } }));" +
+      '  });' +
+      '}' +
+      '</script></body></html>';
+    contents.loadHTML(html);
+
+    await pumpUntil(() => didFinish, 5000);
+    expect(didFinish).toBe(true);
+
+    const find = (channel: string): { args?: unknown[] } | undefined => {
+      for (const json of received) {
+        const env = JSON.parse(json) as { kind: string; channel?: string; args?: unknown[] };
+        if (env.kind === 'send' && env.channel === channel) {
+          return env;
+        }
+      }
+      return undefined;
+    };
+
+    await pumpUntil(
+      () => find('cb-result') !== undefined && find('cb-sambar-typeof') !== undefined,
+      8000,
+    );
+
+    const result = find('cb-result');
+    const sambarTypeof = find('cb-sambar-typeof');
+    expect(result).toBeDefined();
+    expect(result?.args?.[0]).toMatchObject({ value: 42, version: 7 });
+    expect(sambarTypeof).toBeDefined();
+    expect(sambarTypeof?.args).toEqual(['undefined']);
+
+    window.close();
+    await pump(100);
+    app.quit();
+  });
+});

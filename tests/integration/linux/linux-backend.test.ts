@@ -6,6 +6,11 @@ import type { NativeWindow } from '../../../src/main/platform/native';
 /**
  * Full Linux backend lifecycle + IPC round-trip against real GTK4 + WebKitGTK.
  *
+ * `__sambar` now lives in the ISOLATED `SambarPreload` world (context
+ * isolation), so the renderer-side IPC logic ships as a PRELOAD (which runs in
+ * that world); the inbound 'ping' is posted on a 'go' trigger dispatched into
+ * the isolated world, and the echo round-trip is driven the same way.
+ *
  * Runs only in CI ubuntu under `xvfb-run -a` with
  * `WEBKIT_DISABLE_COMPOSITING_MODE=1`, `LIBGL_ALWAYS_SOFTWARE=1`,
  * `GDK_BACKEND=x11` (headless GPU-less runners otherwise hit DMABUF/GBM
@@ -38,11 +43,23 @@ describe.skipIf(!isLinux)('Linux backend end-to-end', () => {
     const app = createLinuxApplication();
     app.start();
 
+    // Isolated-world preload: registers the echo listener and, on 'go', posts an
+    // inbound 'ping'. The bridge is invisible to page scripts now.
+    const preload = [
+      "window.__sambar.on('echo', function (payload) {",
+      "  window.__sambar.send('echoed', payload);",
+      '});',
+      "window.__sambar.on('go', function () {",
+      "  window.__sambar.send('ping', { hello: 'world' });",
+      '});',
+    ].join('\n');
+
     const window: NativeWindow = app.createWindow({
       width: 320,
       height: 240,
       title: 'Linux E2E',
       show: true,
+      preloadScript: preload,
     });
     const contents = window.webContents;
 
@@ -57,37 +74,40 @@ describe.skipIf(!isLinux)('Linux backend end-to-end', () => {
       didFinish = true;
     });
 
-    let received: string | undefined;
+    const received: string[] = [];
     contents.onRendererEnvelope((json) => {
-      received = json;
+      received.push(json);
     });
 
-    // The page posts an inbound envelope, then echoes anything main dispatches.
-    const html =
-      '<!doctype html><html><body><script>' +
-      "window.__sambar.on('echo', function (payload) {" +
-      "  window.__sambar.send('echoed', payload);" +
-      '});' +
-      "window.__sambar.send('ping', { hello: 'world' });" +
-      '</script></body></html>';
-    contents.loadHTML(html);
+    contents.loadHTML('<!doctype html><html><body>linux e2e</body></html>');
 
     await pumpUntil(() => didFinish, 5000);
     expect(didFinish).toBe(true);
 
-    await pumpUntil(() => received !== undefined, 5000);
-    const inbound = received;
+    const find = (channel: string): string | undefined =>
+      received.find((json) => {
+        const env = JSON.parse(json) as { kind: string; channel?: string };
+        return env.kind === 'send' && env.channel === channel;
+      });
+
+    // Trigger the inbound 'ping' by dispatching 'go' into the isolated world.
+    await pumpUntil(() => {
+      contents.sendEnvelopeToRenderer(JSON.stringify({ kind: 'send', channel: 'go', args: [] }));
+      return find('ping') !== undefined;
+    }, 5000);
+    const inbound = find('ping');
     expect(inbound).toBeDefined();
     expect(inbound).toContain('ping');
     expect(JSON.parse(inbound ?? '{}')).toMatchObject({ kind: 'send', channel: 'ping' });
 
-    // Round-trip: main -> renderer via _dispatch -> renderer echoes back.
-    received = undefined;
-    contents.sendEnvelopeToRenderer(
-      JSON.stringify({ kind: 'send', channel: 'echo', args: [{ pong: 1 }] }),
-    );
-    await pumpUntil(() => received !== undefined, 5000);
-    const echoed = received;
+    // Round-trip: main -> renderer via _dispatch (isolated world) -> echo back.
+    await pumpUntil(() => {
+      contents.sendEnvelopeToRenderer(
+        JSON.stringify({ kind: 'send', channel: 'echo', args: [{ pong: 1 }] }),
+      );
+      return find('echoed') !== undefined;
+    }, 5000);
+    const echoed = find('echoed');
     expect(echoed).toBeDefined();
     expect(JSON.parse(echoed ?? '{}')).toMatchObject({ kind: 'send', channel: 'echoed' });
 
