@@ -13,6 +13,9 @@
     "url": "https://github.com/indrajeetor/sambar/issues"
   },
   "type": "module",
+  "bin": {
+    "sambar": "./src/cli/index.ts"
+  },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
