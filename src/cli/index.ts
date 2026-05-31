@@ -7,8 +7,9 @@
  * `process.stdout`/`process.stderr` because Biome bans `console.*`.
  */
 
+import { buildLinuxApp } from './build-linux';
 import { buildMacApp } from './build-macos';
-import { type Command, parseArgs } from './parse-args';
+import { type Command, parseArgs, resolveTarget } from './parse-args';
 import { runApp } from './run';
 import { currentPlatform } from '../common/platform';
 import { SAMBAR_VERSION } from '../common/version';
@@ -30,12 +31,14 @@ Usage:
   sambar --version                     Print the Sambar version
 
 build options:
+  --target <os>      Build target: macos | linux (default: host platform)
   --name <Name>      Display/bundle name (default: derived from <entry>)
   --id <bundle.id>   Bundle identifier (default: com.sambar.<name-slug>)
   --out <dir>        Output directory (default: current directory)
-  --icon <path.icns> App icon (.icns)
+  --icon <path>      App icon (.icns for macOS, .png for linux)
 
-Currently 'sambar build' produces a macOS .app on macOS hosts.`;
+'sambar build' produces a macOS .app or a Linux AppDir + .tar.gz + .deb.
+A macOS host can cross-build Linux with --target linux.`;
 
 /** Derive a default app name from the entry path's base file name. */
 const deriveName = (entry: string): string => {
@@ -45,13 +48,27 @@ const deriveName = (entry: string): string => {
 };
 
 const runBuild = async (command: Extract<Command, { kind: 'build' }>): Promise<number> => {
-  if (currentPlatform() !== 'macos') {
-    err(
-      `sambar build: not yet supported on ${currentPlatform()} (macOS .app is the only target today).`,
-    );
+  const target = resolveTarget(command.options.target);
+  // Only macOS hosts can produce a macOS .app; Linux distributables cross-build
+  // from macOS (and build natively on Linux).
+  if (target === 'macos' && currentPlatform() !== 'macos') {
+    err(`sambar build: --target macos requires a macOS host (this host is ${currentPlatform()}).`);
     return 1;
   }
   const name = command.options.name ?? deriveName(command.entry);
+  if (target === 'linux') {
+    const result = await buildLinuxApp({
+      entry: command.entry,
+      name,
+      ...(command.options.id !== undefined ? { id: command.options.id } : {}),
+      ...(command.options.out !== undefined ? { out: command.options.out } : {}),
+      ...(command.options.icon !== undefined ? { icon: command.options.icon } : {}),
+    });
+    out(result.appDir);
+    out(result.tarball);
+    out(result.deb);
+    return 0;
+  }
   const appPath = await buildMacApp({
     entry: command.entry,
     name,
