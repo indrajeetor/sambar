@@ -35,6 +35,8 @@ import { createMacOSDrain } from './cocoa-run-loop';
 import { cocoa } from './cocoa-runtime';
 import { createNavigationDelegate } from './cocoa-navigation-delegate';
 import { createScriptMessageHandler } from './cocoa-script-message-handler';
+import { createUrlSchemeHandler } from './cocoa-url-scheme-handler';
+import { protocol } from '../../api/protocol';
 import { createWindowDelegate } from './cocoa-window-delegate';
 import { computeWindowStyleMask, STANDARD_WINDOW_STYLE } from './cocoa-style-mask';
 import { loadWebKit } from './cocoa-webkit';
@@ -90,6 +92,35 @@ const enableDeveloperExtras = (preferences: Handle): void => {
     );
   } catch (error) {
     log.warn('could not enable developer extras', error);
+  }
+};
+
+/**
+ * Register every scheme currently registered with the `protocol` module onto a
+ * `WKWebViewConfiguration` via `setURLSchemeHandler:forURLScheme:`. Must run
+ * BEFORE the web view is created from this config (WebKit forbids adding a
+ * scheme handler afterwards). One shared handler serves all schemes; a failure
+ * to register one scheme (e.g. a forbidden/built-in scheme) is logged and
+ * skipped so it cannot abort window creation.
+ */
+const registerCustomSchemes = (configuration: Handle): void => {
+  const schemes = protocol.getRegisteredSchemes();
+  if (schemes.length === 0) {
+    return;
+  }
+  const rt = cocoa();
+  const handler = createUrlSchemeHandler();
+  for (const scheme of schemes) {
+    try {
+      msgSendPtrPtr(
+        configuration,
+        rt.selectors.get('setURLSchemeHandler:forURLScheme:'),
+        handler.handle,
+        nsString(scheme),
+      );
+    } catch (error) {
+      log.warn(`could not register custom scheme '${scheme}'`, error);
+    }
   }
 };
 
@@ -487,6 +518,14 @@ class MacOSApplication implements NativeApplication {
     // Inspect Element, and webContents.openDevTools()). `developerExtrasEnabled`
     // is a KVC key on WKPreferences; set via setValue:forKey: with an NSNumber.
     enableDeveloperExtras(rt.msgSend(configuration, rt.selectors.get('preferences')));
+
+    // Wire every custom scheme registered via `protocol.handle` onto THIS
+    // configuration with `setURLSchemeHandler:forURLScheme:` — it can only be set
+    // on the config BEFORE the web view is created (not after). One shared
+    // `WKURLSchemeHandler` instance serves all schemes; it routes each request
+    // through `protocol.dispatch`. Schemes registered after this window is
+    // created are NOT served by it (Electron has the same before-create rule).
+    registerCustomSchemes(configuration);
 
     // The web view (and thus its contents) does not exist until after the
     // configuration is built, so the handler forwards to a late-bound contents

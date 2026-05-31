@@ -414,3 +414,82 @@ export const msgSendPtrI64U8Ptr = (
   arg2: number,
   arg3: Handle,
 ): Handle => getPtrI64U8PtrLib().symbols.objc_msgSend(receiver, selector, arg0, arg1, arg2, arg3);
+
+const PTR_I64_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.u64, FFIType.u64, FFIType.u64, FFIType.i64],
+    returns: FFIType.u64,
+  },
+} as const;
+
+const getPtrI64Lib = macOSLibraryAccessor('msgSendPtrI64', () =>
+  dlopen(LIBOBJC_PATH, PTR_I64_VARIANT),
+);
+
+/**
+ * Send a message with a pointer arg and an `NSInteger`/`NSUInteger` arg —
+ * specifically `[NSData dataWithBytes:(const void*)ptr length:(NSUInteger)len]`,
+ * where the byte pointer is a pinned buffer and the length is its size.
+ *
+ * Only callable on macOS — throws {@link UnsupportedPlatformError} otherwise.
+ */
+export const msgSendPtrI64 = (
+  receiver: Handle,
+  selector: Handle,
+  arg0: Handle,
+  arg1: bigint,
+): Handle => getPtrI64Lib().symbols.objc_msgSend(receiver, selector, arg0, arg1);
+
+const PTR_I64_PTR_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.u64, FFIType.u64, FFIType.u64, FFIType.i64, FFIType.u64],
+    returns: FFIType.u64,
+  },
+} as const;
+
+const getPtrI64PtrLib = macOSLibraryAccessor('msgSendPtrI64Ptr', () =>
+  dlopen(LIBOBJC_PATH, PTR_I64_PTR_VARIANT),
+);
+
+/**
+ * Send a message with a pointer arg, an `NSInteger` arg, and a trailing pointer
+ * arg — specifically `[NSError errorWithDomain:code:userInfo:]` (domain string,
+ * integer code, nullable userInfo dictionary).
+ *
+ * Only callable on macOS — throws {@link UnsupportedPlatformError} otherwise.
+ */
+export const msgSendPtrI64Ptr = (
+  receiver: Handle,
+  selector: Handle,
+  arg0: Handle,
+  arg1: bigint,
+  arg2: Handle,
+): Handle => getPtrI64PtrLib().symbols.objc_msgSend(receiver, selector, arg0, arg1, arg2);
+
+const PTR_PTR_I64_PTR_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.u64, FFIType.u64, FFIType.u64, FFIType.u64, FFIType.i64, FFIType.u64],
+    returns: FFIType.u64,
+  },
+} as const;
+
+const getPtrPtrI64PtrLib = macOSLibraryAccessor('msgSendPtrPtrI64Ptr', () =>
+  dlopen(LIBOBJC_PATH, PTR_PTR_I64_PTR_VARIANT),
+);
+
+/**
+ * Send a message with two pointer args, an `NSInteger` arg, and a trailing
+ * pointer arg — specifically `[[NSURLResponse alloc]
+ * initWithURL:MIMEType:expectedContentLength:textEncodingName:]` (URL pointer,
+ * MIME-type NSString pointer, content length, text-encoding NSString or 0).
+ *
+ * Only callable on macOS — throws {@link UnsupportedPlatformError} otherwise.
+ */
+export const msgSendPtrPtrI64Ptr = (
+  receiver: Handle,
+  selector: Handle,
+  arg0: Handle,
+  arg1: Handle,
+  arg2: bigint,
+  arg3: Handle,
+): Handle => getPtrPtrI64PtrLib().symbols.objc_msgSend(receiver, selector, arg0, arg1, arg2, arg3);
