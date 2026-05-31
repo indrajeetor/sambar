@@ -19,6 +19,10 @@ export type BuildOptions = {
   readonly out?: string;
   readonly icon?: string;
   readonly target?: BuildTarget;
+  /** macOS code-signing identity (`-` = ad-hoc). Real Developer-ID needs the cert in the keychain. */
+  readonly sign?: string;
+  /** Request notarization (a documented hook; requires Apple credentials to actually run). */
+  readonly notarize?: boolean;
 };
 
 export type Command =
@@ -28,13 +32,17 @@ export type Command =
   | { readonly kind: 'build'; readonly entry: string; readonly options: BuildOptions }
   | { readonly kind: 'error'; readonly message: string };
 
-const BUILD_FLAGS = new Map<string, keyof BuildOptions>([
+/** `sambar build` flags that take a string value, keyed by argv token. */
+const BUILD_STRING_FLAGS = new Map<string, 'name' | 'id' | 'out' | 'icon' | 'sign'>([
   ['--name', 'name'],
   ['--id', 'id'],
   ['--out', 'out'],
   ['--icon', 'icon'],
-  ['--target', 'target'],
+  ['--sign', 'sign'],
 ]);
+
+/** `sambar build` boolean flags that take no value, by argv token. */
+const BUILD_BOOLEAN_FLAGS: ReadonlySet<string> = new Set<string>(['--notarize']);
 
 const BUILD_TARGETS: ReadonlySet<BuildTarget> = new Set<BuildTarget>(['macos', 'linux']);
 
@@ -59,15 +67,17 @@ const parseBuild = (rest: readonly string[]): Command => {
       continue;
     }
     if (token.startsWith('--')) {
-      const key = BUILD_FLAGS.get(token);
-      if (key === undefined) {
-        return { kind: 'error', message: `sambar build: unknown flag ${token}` };
+      if (BUILD_BOOLEAN_FLAGS.has(token)) {
+        if (token === '--notarize') {
+          options.notarize = true;
+        }
+        continue;
       }
-      const value = rest[i + 1];
-      if (value === undefined) {
-        return { kind: 'error', message: `sambar build: flag ${token} requires a value` };
-      }
-      if (key === 'target') {
+      if (token === '--target') {
+        const value = rest[i + 1];
+        if (value === undefined) {
+          return { kind: 'error', message: `sambar build: flag ${token} requires a value` };
+        }
         if (!isBuildTarget(value)) {
           return {
             kind: 'error',
@@ -77,6 +87,14 @@ const parseBuild = (rest: readonly string[]): Command => {
         options.target = value;
         i += 1;
         continue;
+      }
+      const key = BUILD_STRING_FLAGS.get(token);
+      if (key === undefined) {
+        return { kind: 'error', message: `sambar build: unknown flag ${token}` };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return { kind: 'error', message: `sambar build: flag ${token} requires a value` };
       }
       options[key] = value;
       i += 1;
