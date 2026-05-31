@@ -8,13 +8,16 @@ import type {
   NativeWindowOptions,
   Rect,
 } from '../native';
+import { getContentWorld, pageWorld } from './cocoa-content-world';
 import { nsString, nsStringToString } from './cocoa-foundation';
 import {
   msgSendI64,
   msgSendInitWithContentRect,
   msgSendInitWithFrameConfig,
   msgSendPtr,
-  msgSendPtrI64U8,
+  msgSendPtr3,
+  msgSendPtr4,
+  msgSendPtrI64U8Ptr,
   msgSendPtrPtr,
   msgSendReturnsU8,
   msgSendSize,
@@ -41,17 +44,21 @@ const NS_BACKING_STORE_BUFFERED = 2n;
 const NS_ACTIVATION_POLICY_REGULAR = 0n;
 const WK_INJECTION_TIME_AT_DOCUMENT_START = 0n;
 const SCRIPT_MESSAGE_HANDLER_NAME = 'sambar';
+/** Name of the isolated `WKContentWorld` the bridge + user preload run in. */
+export const PRELOAD_WORLD_NAME = 'SambarPreload';
 
 const dispatchScript = (envelopeJson: string): string =>
   `window.__sambar && window.__sambar._dispatch(${JSON.stringify(envelopeJson)});`;
 
 class MacOSWebContents implements NativeWebContents {
   readonly #webview: Handle;
+  readonly #isolatedWorld: Handle;
   #envelopeCallback: ((envelopeJson: string) => void) | undefined;
   #didFinishLoadCallback: (() => void) | undefined;
 
-  constructor(webview: Handle) {
+  constructor(webview: Handle, isolatedWorld: Handle) {
     this.#webview = webview;
+    this.#isolatedWorld = isolatedWorld;
   }
 
   /** @internal Called by the script message handler with renderer envelopes. */
@@ -122,18 +129,30 @@ class MacOSWebContents implements NativeWebContents {
   }
 
   executeJavaScript(code: string): void {
-    const rt = cocoa();
-    // nil completion handler — fire-and-forget (D022).
-    msgSendPtrPtr(
-      this.#webview,
-      rt.selectors.get('evaluateJavaScript:completionHandler:'),
-      nsString(code),
-      0n,
-    );
+    // Public API runs in the PAGE world (Electron semantics: the main world).
+    this.#evaluateInWorld(code, pageWorld());
   }
 
   sendEnvelopeToRenderer(envelopeJson: string): void {
-    this.executeJavaScript(dispatchScript(envelopeJson));
+    // Internal dispatch targets the ISOLATED world, where `__sambar` lives.
+    this.#evaluateInWorld(dispatchScript(envelopeJson), this.#isolatedWorld);
+  }
+
+  /**
+   * Evaluate `code` in a specific `WKContentWorld` via
+   * `evaluateJavaScript:inFrame:inContentWorld:completionHandler:` (macOS 11+).
+   * `frame = 0n` (main frame), completion handler `0n` (fire-and-forget, D022).
+   */
+  #evaluateInWorld(code: string, world: Handle): void {
+    const rt = cocoa();
+    msgSendPtr4(
+      this.#webview,
+      rt.selectors.get('evaluateJavaScript:inFrame:inContentWorld:completionHandler:'),
+      nsString(code),
+      0n,
+      world,
+      0n,
+    );
   }
 
   onRendererEnvelope(callback: (envelopeJson: string) => void): void {
@@ -296,32 +315,41 @@ class MacOSApplication implements NativeApplication {
       configuration,
       rt.selectors.get('userContentController'),
     );
+
+    // Inject the bridge + user preload into a dedicated isolated world so they
+    // are invisible to page scripts (Electron `contextIsolation: true`).
+    const isolatedWorld = getContentWorld(PRELOAD_WORLD_NAME);
+
     const handler = createScriptMessageHandler((envelopeJson) =>
       contents?.deliverRendererEnvelope(envelopeJson),
     );
-    msgSendPtrPtr(
+    // Register the handler IN the isolated world so its `webkit.messageHandlers`
+    // binding is reachable only from there.
+    msgSendPtr3(
       userContentController,
-      rt.selectors.get('addScriptMessageHandler:name:'),
+      rt.selectors.get('addScriptMessageHandler:contentWorld:name:'),
       handler.handle,
+      isolatedWorld,
       nsString(SCRIPT_MESSAGE_HANDLER_NAME),
     );
 
-    const addUserScript = (source: string): void => {
-      const userScript = msgSendPtrI64U8(
+    const addUserScript = (source: string, world: Handle): void => {
+      const userScript = msgSendPtrI64U8Ptr(
         rt.msgSend(rt.classes.get('WKUserScript'), rt.selectors.get('alloc')),
-        rt.selectors.get('initWithSource:injectionTime:forMainFrameOnly:'),
+        rt.selectors.get('initWithSource:injectionTime:forMainFrameOnly:inContentWorld:'),
         nsString(source),
         WK_INJECTION_TIME_AT_DOCUMENT_START,
         0,
+        world,
       );
       msgSendPtr(userContentController, rt.selectors.get('addUserScript:'), userScript);
     };
 
-    // Bridge first, then the user preload, so `window.__sambar` exists when the
-    // preload runs.
-    addUserScript(generatePreloadBootstrap());
+    // Bridge first, then the user preload, both in the isolated world so
+    // `window.__sambar` exists there when the preload runs.
+    addUserScript(generatePreloadBootstrap(), isolatedWorld);
     if (options.preloadScript !== undefined) {
-      addUserScript(options.preloadScript);
+      addUserScript(options.preloadScript, isolatedWorld);
     }
 
     const webview = msgSendInitWithFrameConfig(
@@ -330,7 +358,7 @@ class MacOSApplication implements NativeApplication {
       frame,
       configuration,
     );
-    contents = new MacOSWebContents(webview);
+    contents = new MacOSWebContents(webview, isolatedWorld);
 
     const navigationDelegate = createNavigationDelegate(() => contents?.deliverDidFinishLoad());
     msgSendPtr(webview, rt.selectors.get('setNavigationDelegate:'), navigationDelegate.handle);
