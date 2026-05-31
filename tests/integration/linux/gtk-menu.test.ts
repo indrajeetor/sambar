@@ -20,9 +20,12 @@ import type { NativeWindow } from '../../../src/main/platform/native';
  *
  * Mirrors `cocoa-menu.test.ts` `performMenuItem`: build a menu via the real
  * realizer with an `onClick` that sets a flag, then fire the action through
- * `g_action_group_activate_action(group, "sambar.menu-N", null)` and assert the
- * JS `onClick` ran. This proves click routing end-to-end (action model → signal
- * → JSCallback → JS) WITHOUT a synthetic pointer event.
+ * `g_action_group_activate_action(group, "menu-N", null)` and assert the JS
+ * `onClick` ran. Note the BARE action name (`menu-N`): a `GSimpleActionGroup`
+ * keys actions by their own name; the `sambar.` prefix only applies when the
+ * group is resolved through the window's inserted action namespace (the menu
+ * bar). This proves click routing end-to-end (action model → signal → JSCallback
+ * → JS) WITHOUT a synthetic pointer event.
  *
  * It also constructs a `GtkPopoverMenuBar` + `GtkBox` from a model (no crash),
  * verifies a window created AFTER `setApplicationMenu` builds without throwing
@@ -99,10 +102,10 @@ describe.skipIf(!isLinux)('GTK menu backend (Linux)', () => {
     const gio = loadGMenuFFI();
     const asPtr = (h: bigint): import('bun:ffi').Pointer =>
       Number(h) as unknown as import('bun:ffi').Pointer;
-    gio.symbols.g_action_group_activate_action(asPtr(group), cstr(`sambar.${names[0]}`), null);
+    gio.symbols.g_action_group_activate_action(asPtr(group), cstr(`${names[0]}`), null);
     expect(fired).toBe(1);
     expect(firedOther).toBe(0);
-    gio.symbols.g_action_group_activate_action(asPtr(group), cstr(`sambar.${names[1]}`), null);
+    gio.symbols.g_action_group_activate_action(asPtr(group), cstr(`${names[1]}`), null);
     expect(fired).toBe(1);
     expect(firedOther).toBe(1);
   });
