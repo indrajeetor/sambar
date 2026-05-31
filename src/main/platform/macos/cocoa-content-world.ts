@@ -35,17 +35,28 @@ export const getContentWorld = (name: string): Handle => {
     rt.selectors.get('worldWithName:'),
     nsString(name),
   );
+  // `worldWithName:` returns an autoreleased object; retain before caching so it
+  // cannot dangle when the cooperative pump drains the autorelease pool. This is
+  // a process-lifetime singleton, so the matching release is never needed.
+  rt.msgSend(world, rt.selectors.get('retain'));
   worldCache.set(name, world);
   return world;
 };
 
-/** Return the shared `+[WKContentWorld pageWorld]` (the page's main world). */
+/**
+ * Return the shared `+[WKContentWorld pageWorld]` (the page's main world). Used
+ * immediately by callers, so it is not cached — do NOT cache the result of this
+ * (or `worldWithName:`) without sending `-retain` first.
+ */
 export const pageWorld = (): Handle => {
   const rt = cocoa();
   return rt.msgSend(rt.classes.get('WKContentWorld'), rt.selectors.get('pageWorld'));
 };
 
-/** Return `+[WKContentWorld defaultClientWorld]` (WebKit's default client world). */
+/**
+ * Return `+[WKContentWorld defaultClientWorld]` (WebKit's default client world).
+ * Used immediately; do NOT cache without sending `-retain` first.
+ */
 export const defaultClientWorld = (): Handle => {
   const rt = cocoa();
   return rt.msgSend(rt.classes.get('WKContentWorld'), rt.selectors.get('defaultClientWorld'));
