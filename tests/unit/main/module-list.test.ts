@@ -40,6 +40,11 @@ describe('IMPLEMENTED_MODULES', () => {
     expect(implemented).toContain('screen');
     expect(implemented).toContain('globalShortcut');
     expect(implemented).toContain('Tray');
+    expect(implemented).toContain('protocol');
+  });
+
+  test('claims the protocol module', () => {
+    expect(isImplemented('protocol')).toBe(true);
   });
 
   test('does not yet claim still-unshipped modules like autoUpdater', () => {

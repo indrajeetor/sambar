@@ -36,6 +36,13 @@ describe('sambar/main entry barrel', () => {
     expect(sambarMain.Tray).toBeDefined();
     expect(typeof sambarMain.Tray).toBe('function');
   });
+
+  test('exports the protocol module', () => {
+    expect(sambarMain.protocol).toBeDefined();
+    expect(typeof sambarMain.protocol.handle).toBe('function');
+    expect(typeof sambarMain.protocol.isProtocolHandled).toBe('function');
+    expect(typeof sambarMain.protocol.getRegisteredSchemes).toBe('function');
+  });
 });
 
 describe('sambar (root) entry barrel', () => {

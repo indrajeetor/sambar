@@ -21,6 +21,12 @@ export {
 } from './api/menu';
 export { nativeTheme, type NativeTheme } from './api/native-theme';
 export { Notification, type NotificationOptions } from './api/notification';
+export {
+  type ProtocolHandler,
+  type ProtocolRequest,
+  type ProtocolResponse,
+  protocol,
+} from './api/protocol';
 export { type Display, type Point, screen, type Size } from './api/screen';
 export { shell, type Shell } from './api/shell';
 export { Tray, type TrayBackend, type TrayInstance } from './api/tray';

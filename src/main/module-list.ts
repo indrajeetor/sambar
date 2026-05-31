@@ -67,6 +67,7 @@ export const IMPLEMENTED_MODULES = [
   'MenuItem',
   'nativeTheme',
   'Notification',
+  'protocol',
   'screen',
   'shell',
   'Tray',
