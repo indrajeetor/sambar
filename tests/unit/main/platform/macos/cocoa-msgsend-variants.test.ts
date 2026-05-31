@@ -6,6 +6,8 @@ import {
   msgSendI64,
   msgSendInitWithContentRect,
   msgSendPtr,
+  msgSendPtr4,
+  msgSendPtrI64U8Ptr,
   msgSendReturnsU8,
   msgSendU8,
 } from '../../../../../src/main/platform/macos/cocoa-msgsend-variants';
@@ -46,6 +48,18 @@ describe('msgSendReturnsU8 export', () => {
   });
 });
 
+describe('msgSendPtr4 export', () => {
+  test('is a function', () => {
+    expect(typeof msgSendPtr4).toBe('function');
+  });
+});
+
+describe('msgSendPtrI64U8Ptr export', () => {
+  test('is a function', () => {
+    expect(typeof msgSendPtrI64U8Ptr).toBe('function');
+  });
+});
+
 if (currentPlatform() !== 'macos') {
   describe('msgSendInitWithContentRect on non-macOS hosts', () => {
     test('throws SambarError', () => {
@@ -82,6 +96,18 @@ if (currentPlatform() !== 'macos') {
   describe('msgSendReturnsU8 on non-macOS hosts', () => {
     test('throws SambarError', () => {
       expect(() => msgSendReturnsU8(0n, 0n)).toThrow(SambarError);
+    });
+  });
+
+  describe('msgSendPtr4 on non-macOS hosts', () => {
+    test('throws SambarError', () => {
+      expect(() => msgSendPtr4(0n, 0n, 0n, 0n, 0n, 0n)).toThrow(SambarError);
+    });
+  });
+
+  describe('msgSendPtrI64U8Ptr on non-macOS hosts', () => {
+    test('throws SambarError', () => {
+      expect(() => msgSendPtrI64U8Ptr(0n, 0n, 0n, 0n, 0, 0n)).toThrow(SambarError);
     });
   });
 }

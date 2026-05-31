@@ -359,3 +359,58 @@ export const msgSendPtrI64U8 = (
   arg1: bigint,
   arg2: number,
 ): Handle => getPtrI64U8Lib().symbols.objc_msgSend(receiver, selector, arg0, arg1, arg2);
+
+const PTR4_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.u64, FFIType.u64, FFIType.u64, FFIType.u64, FFIType.u64, FFIType.u64],
+    returns: FFIType.u64,
+  },
+} as const;
+
+const getPtr4Lib = macOSLibraryAccessor('msgSendPtr4', () => dlopen(LIBOBJC_PATH, PTR4_VARIANT));
+
+/**
+ * Send a message with four extra pointer-sized args — specifically
+ * `[WKWebView evaluateJavaScript:inFrame:inContentWorld:completionHandler:]`
+ * (macOS 11+). Pass `frame = 0n` (main frame) and `completionHandler = 0n`
+ * (`_Nullable`, fire-and-forget — no block thunk, no D022 hazard).
+ *
+ * Only callable on macOS — throws {@link UnsupportedPlatformError} otherwise.
+ */
+export const msgSendPtr4 = (
+  receiver: Handle,
+  selector: Handle,
+  arg0: Handle,
+  arg1: Handle,
+  arg2: Handle,
+  arg3: Handle,
+): Handle => getPtr4Lib().symbols.objc_msgSend(receiver, selector, arg0, arg1, arg2, arg3);
+
+const PTR_I64_U8_PTR_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.u64, FFIType.u64, FFIType.u64, FFIType.i64, FFIType.u8, FFIType.u64],
+    returns: FFIType.u64,
+  },
+} as const;
+
+const getPtrI64U8PtrLib = macOSLibraryAccessor('msgSendPtrI64U8Ptr', () =>
+  dlopen(LIBOBJC_PATH, PTR_I64_U8_PTR_VARIANT),
+);
+
+/**
+ * Send a message with a pointer arg, an `NSInteger` arg, a `BOOL` arg, and a
+ * trailing pointer arg — specifically
+ * `[WKUserScript initWithSource:injectionTime:forMainFrameOnly:inContentWorld:]`
+ * (macOS 11+). The world handle is carried by the script object; `addUserScript:`
+ * is unchanged.
+ *
+ * Only callable on macOS — throws {@link UnsupportedPlatformError} otherwise.
+ */
+export const msgSendPtrI64U8Ptr = (
+  receiver: Handle,
+  selector: Handle,
+  arg0: Handle,
+  arg1: bigint,
+  arg2: number,
+  arg3: Handle,
+): Handle => getPtrI64U8PtrLib().symbols.objc_msgSend(receiver, selector, arg0, arg1, arg2, arg3);
