@@ -98,6 +98,7 @@ class MacOSWebContents implements NativeWebContents {
   #didFinishLoadCallback: (() => void) | undefined;
   readonly #pendingExecs = new Map<number, PendingExec>();
   #nextExecId = 1;
+  #destroyed = false;
 
   constructor(webview: Handle, isolatedWorld: Handle) {
     this.#webview = webview;
@@ -137,11 +138,19 @@ class MacOSWebContents implements NativeWebContents {
     }
   }
 
-  /** @internal Reject every still-pending exec; called on window close. */
+  /**
+   * @internal Mark destroyed and settle every still-pending exec; called on
+   * window close BEFORE the web view is torn down. In-flight execs resolve to
+   * `undefined` — a normally closed window is not a hard error and a
+   * fire-and-forget caller must not receive an unhandled rejection. Any later
+   * `executeJavaScript` is rejected by the `#destroyed` guard without touching
+   * the freed web view.
+   */
   rejectPendingExecs(): void {
+    this.#destroyed = true;
     for (const [, pending] of this.#pendingExecs) {
       clearTimeout(pending.timer);
-      pending.reject(new Error('executeJavaScript aborted: web contents destroyed'));
+      pending.resolve(undefined);
     }
     this.#pendingExecs.clear();
   }
@@ -215,6 +224,9 @@ class MacOSWebContents implements NativeWebContents {
    * the page-world `sambarExec` handler, which settles the matching Promise.
    */
   executeJavaScript(code: string): Promise<unknown> {
+    if (this.#destroyed) {
+      return Promise.reject(new Error('executeJavaScript failed: web contents destroyed'));
+    }
     const execId = this.#nextExecId;
     this.#nextExecId += 1;
     return new Promise<unknown>((resolve, reject) => {

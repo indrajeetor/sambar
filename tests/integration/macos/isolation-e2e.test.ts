@@ -86,7 +86,8 @@ if (currentPlatform() === 'macos') {
           JSON.stringify({ kind: 'send', channel: 'iso-typeof-req', args: [] }),
         );
         // Run the page-world probe; the isolated preload relays the DOM event.
-        contents.executeJavaScript(pageProbe);
+        // Fire-and-forget; swallow a late teardown rejection.
+        contents.executeJavaScript(pageProbe).catch(() => undefined);
         await delay(120);
         isolated = find((e) => e.kind === 'send' && e.channel === 'iso-typeof');
         pageTypeof = find((e) => e.kind === 'send' && e.channel === 'page-typeof');

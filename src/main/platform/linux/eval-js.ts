@@ -42,6 +42,7 @@ export class ExecResultChannel {
   readonly #view: Pointer;
   readonly #pending = new Map<number, PendingExec>();
   #nextExecId = 1;
+  #destroyed = false;
 
   constructor(view: Pointer) {
     this.#view = view;
@@ -52,6 +53,9 @@ export class ExecResultChannel {
    * (Electron semantics). The outcome arrives via {@link deliverExecResult}.
    */
   executeJavaScript(code: string): Promise<unknown> {
+    if (this.#destroyed) {
+      return Promise.reject(new Error('executeJavaScript failed: web contents destroyed'));
+    }
     const execId = this.#nextExecId;
     this.#nextExecId += 1;
     return new Promise<unknown>((resolve, reject) => {
@@ -92,11 +96,18 @@ export class ExecResultChannel {
     }
   }
 
-  /** Reject every still-pending exec; called on window close. */
+  /**
+   * Mark destroyed and settle every still-pending exec; called on window close
+   * BEFORE the view is finalized. In-flight execs resolve to `undefined` — a
+   * normally closed window is not a hard error and a fire-and-forget caller must
+   * not receive an unhandled rejection. Any later `executeJavaScript` is rejected
+   * by the `#destroyed` guard without touching the freed view.
+   */
   rejectPending(): void {
+    this.#destroyed = true;
     for (const [, pending] of this.#pending) {
       clearTimeout(pending.timer);
-      pending.reject(new Error('executeJavaScript aborted: web contents destroyed'));
+      pending.resolve(undefined);
     }
     this.#pending.clear();
   }

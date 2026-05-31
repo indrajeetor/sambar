@@ -88,7 +88,8 @@ if (currentPlatform() === 'macos') {
       let result: ReturnType<typeof decodeEnvelope> | undefined;
       let sambarTypeof: ReturnType<typeof decodeEnvelope> | undefined;
       while (Date.now() < deadline && (result === undefined || sambarTypeof === undefined)) {
-        contents.executeJavaScript(pageScript);
+        // Fire-and-forget; swallow a late teardown rejection.
+        contents.executeJavaScript(pageScript).catch(() => undefined);
         await delay(150);
         result = find((e) => e.kind === 'send' && e.channel === 'cb-result');
         sambarTypeof = find((e) => e.kind === 'send' && e.channel === 'cb-sambar-typeof');

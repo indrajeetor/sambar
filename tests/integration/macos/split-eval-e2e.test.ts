@@ -69,8 +69,9 @@ if (currentPlatform() === 'macos') {
       const deadline = Date.now() + 8000;
       let report: ReturnType<typeof decodeEnvelope> | undefined;
       while (Date.now() < deadline && report === undefined) {
-        // Set a global in the PAGE world via the public API.
-        contents.executeJavaScript('window.__pageMarker = "from-page";');
+        // Set a global in the PAGE world via the public API (fire-and-forget;
+        // swallow a late teardown rejection).
+        contents.executeJavaScript('window.__pageMarker = "from-page";').catch(() => undefined);
         await delay(60);
         // Ask the ISOLATED world to report; dispatch lands in the isolated world.
         contents.sendEnvelopeToRenderer(

@@ -75,7 +75,9 @@ describe.skipIf(!isLinux)('Linux split eval semantics', () => {
 
     await pumpUntil(() => {
       // Set a PAGE-world global via the public API (world_name = NULL).
-      contents.executeJavaScript('window.__pageMarker = "from-page";');
+      // Fire-and-forget: handle the teardown rejection so a late in-flight exec
+      // cannot surface as an unhandled rejection.
+      contents.executeJavaScript('window.__pageMarker = "from-page";').catch(() => undefined);
       // Ask the ISOLATED world to report.
       contents.sendEnvelopeToRenderer(
         JSON.stringify({ kind: 'send', channel: 'report', args: [] }),
