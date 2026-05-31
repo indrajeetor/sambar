@@ -83,8 +83,12 @@ describe.skipIf(!isLinux)('Linux window lifecycle events end-to-end', () => {
     window.close();
     await pumpUntil(() => closed > 0, 2000);
     expect(closed).toBe(1);
-    // The pending exec resolved/settled without touching a freed view.
-    expect(await pending).toBeDefined();
+    // The pending exec SETTLES without crashing on a freed view — the point of
+    // the close-path teardown. Depending on timing it is `undefined` (teardown
+    // resolves in-flight execs to undefined), `2` (the result arrived first), or
+    // `'settled'` (rejected + caught); any of these proves no use-after-free.
+    const settled = await pending;
+    expect(settled === undefined || settled === 2 || settled === 'settled').toBe(true);
 
     app.quit();
   });
