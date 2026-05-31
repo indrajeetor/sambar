@@ -1,14 +1,19 @@
 import { UnsupportedPlatformError } from '../../common/errors';
 import { currentPlatform } from '../../common/platform';
 import * as cocoaDialog from '../platform/macos/cocoa-dialog';
+import { linuxDialogBackend } from '../platform/linux/gtk-dialog';
 
 /**
  * Native system dialogs — the drop-in equivalent of Electron's `dialog`.
  *
- * Methods return Promises to match Electron's async API, even though the macOS
- * backend runs the panels modally (synchronously) under the hood. The native
- * backend is injectable so the option-mapping and result-shaping logic is
- * unit-testable without showing a real dialog.
+ * Methods return Promises to match Electron's async API. The macOS backend runs
+ * the panels modally (synchronously) under the hood; the Linux backend is truly
+ * async (GTK's `GtkAlertDialog`/`GtkFileDialog` resolve via a
+ * `GAsyncReadyCallback`). The `DialogBackend` methods therefore allow either a
+ * value or a Promise, and the API layer wraps each in `Promise.resolve(...)`
+ * which flattens a returned Promise transparently. The native backend is
+ * injectable so the option-mapping and result-shaping logic is unit-testable
+ * without showing a real dialog.
  */
 
 export type MessageBoxOptions = {
@@ -43,11 +48,17 @@ export type SaveDialogReturnValue = {
   readonly filePath: string;
 };
 
-/** The native backend the public dialog API delegates to. */
+/**
+ * The native backend the public dialog API delegates to.
+ *
+ * Each method may return its value synchronously (macOS, which runs panels
+ * modally) or a Promise (Linux, whose GTK dialogs settle asynchronously). The
+ * API layer's `Promise.resolve(...)` flattens both uniformly.
+ */
 export type DialogBackend = {
-  showMessageBox(spec: cocoaDialog.MessageBoxSpec): number;
-  showOpenDialog(spec: cocoaDialog.OpenDialogSpec): string[];
-  showSaveDialog(spec: cocoaDialog.SaveDialogSpec): string;
+  showMessageBox(spec: cocoaDialog.MessageBoxSpec): number | Promise<number>;
+  showOpenDialog(spec: cocoaDialog.OpenDialogSpec): string[] | Promise<string[]>;
+  showSaveDialog(spec: cocoaDialog.SaveDialogSpec): string | Promise<string>;
 };
 
 const macosBackend: DialogBackend = {
@@ -65,6 +76,9 @@ const getBackend = (): DialogBackend => {
   if (currentPlatform() === 'macos') {
     return macosBackend;
   }
+  if (currentPlatform() === 'linux') {
+    return linuxDialogBackend;
+  }
   throw new UnsupportedPlatformError(`dialog is not supported on ${currentPlatform()} yet`);
 };
 
@@ -80,27 +94,29 @@ export type Dialog = {
 };
 
 export const dialog: Dialog = {
-  showMessageBox(options) {
-    const response = getBackend().showMessageBox({
+  // `await` flattens a sync value (macOS) or a Promise (Linux) uniformly before
+  // the result object is constructed, so a Promise is never double-wrapped.
+  async showMessageBox(options) {
+    const response = await getBackend().showMessageBox({
       message: options.message,
       detail: options.detail ?? '',
       buttons: options.buttons ?? ['OK'],
     });
-    return Promise.resolve({ response });
+    return { response };
   },
 
-  showOpenDialog(options = {}) {
+  async showOpenDialog(options = {}) {
     const properties = options.properties ?? ['openFile'];
-    const filePaths = getBackend().showOpenDialog({
+    const filePaths = await getBackend().showOpenDialog({
       canChooseFiles: properties.includes('openFile'),
       canChooseDirectories: properties.includes('openDirectory'),
       allowsMultipleSelection: properties.includes('multiSelections'),
     });
-    return Promise.resolve({ canceled: filePaths.length === 0, filePaths });
+    return { canceled: filePaths.length === 0, filePaths };
   },
 
-  showSaveDialog(options = {}) {
-    const filePath = getBackend().showSaveDialog({ defaultName: options.defaultPath ?? '' });
-    return Promise.resolve({ canceled: filePath.length === 0, filePath });
+  async showSaveDialog(options = {}) {
+    const filePath = await getBackend().showSaveDialog({ defaultName: options.defaultPath ?? '' });
+    return { canceled: filePath.length === 0, filePath };
   },
 };

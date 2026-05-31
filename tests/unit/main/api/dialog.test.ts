@@ -111,3 +111,38 @@ describe('dialog.showSaveDialog', () => {
     expect(await dialog.showSaveDialog()).toEqual({ canceled: false, filePath: '/home/notes.md' });
   });
 });
+
+describe('async DialogBackend (Promise-returning, e.g. Linux GTK)', () => {
+  test('flattens a Promise<number> from showMessageBox without double-wrapping', async () => {
+    const asyncBackend: DialogBackend = {
+      showMessageBox: () => Promise.resolve(2),
+      showOpenDialog: () => Promise.resolve([]),
+      showSaveDialog: () => Promise.resolve(''),
+    };
+    setDialogBackendForTesting(asyncBackend);
+    expect(await dialog.showMessageBox({ message: 'm' })).toEqual({ response: 2 });
+  });
+
+  test('flattens a Promise<string[]> from showOpenDialog', async () => {
+    const asyncBackend: DialogBackend = {
+      showMessageBox: () => Promise.resolve(0),
+      showOpenDialog: () => Promise.resolve(['/picked.txt']),
+      showSaveDialog: () => Promise.resolve(''),
+    };
+    setDialogBackendForTesting(asyncBackend);
+    expect(await dialog.showOpenDialog()).toEqual({
+      canceled: false,
+      filePaths: ['/picked.txt'],
+    });
+  });
+
+  test('flattens a Promise<string> from showSaveDialog', async () => {
+    const asyncBackend: DialogBackend = {
+      showMessageBox: () => Promise.resolve(0),
+      showOpenDialog: () => Promise.resolve([]),
+      showSaveDialog: () => Promise.resolve('/out.md'),
+    };
+    setDialogBackendForTesting(asyncBackend);
+    expect(await dialog.showSaveDialog()).toEqual({ canceled: false, filePath: '/out.md' });
+  });
+});

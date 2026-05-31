@@ -13,6 +13,10 @@ import { currentPlatform } from '../../../common/platform';
  * unwrapping. `libgio-2.0` is a hard dependency of GTK 4, so it is always
  * present wherever `libgtk-4` is.
  *
+ * `g_file_get_path(file)` unwraps the `GFile*` returned by `GtkFileDialog` into
+ * a transfer-full local-path `char*` (the dialog backend reads it then frees it
+ * with `g_free`).
+ *
  * Convention (matches the existing Linux loaders): `gboolean` is modelled as
  * {@link FFIType.i32} (compare `=== 1`), NOT `bool`; the `GAppLaunchContext*`
  * and `GError**` args are real pointers passed as `null`; `cstring` args are
@@ -29,6 +33,12 @@ export const GIO_FFI_SYMBOLS = {
   g_app_info_launch_default_for_uri: {
     args: [FFIType.cstring, FFIType.pointer, FFIType.pointer],
     returns: FFIType.i32,
+  },
+  // Returns a transfer-full `char*` (the local filesystem path) for a GFile, or
+  // NULL if the GFile has no native path. The caller MUST `g_free` the result.
+  g_file_get_path: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
   },
 } as const;
 
