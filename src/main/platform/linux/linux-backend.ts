@@ -17,6 +17,8 @@ import type {
 } from '../native';
 import { ExecResultChannel } from './eval-js';
 import { loadGtkFFI } from './gtk-ffi';
+import { getCurrentAppMenu } from './gtk-menu';
+import { loadGtkMenuFFI } from './gtk-menu-ffi';
 import { createLinuxDrain } from './gtk-run-loop';
 import { makeCloseRequestCallback, makeLoadChangedCallback, SignalRegistry } from './gtk-signals';
 import { createWebViewWithIpc, sendToRenderer } from './webkit-ipc';
@@ -34,6 +36,8 @@ import { loadWebKitGtkFFI, readGetUriResult } from './webkitgtk-ffi';
 
 const GTK_TRUE = 1;
 const GTK_FALSE = 0;
+/** `GtkOrientation`: stack the menu bar above the webview vertically. */
+const GTK_ORIENTATION_VERTICAL = 1;
 
 /**
  * Linux {@link NativeWebContents}: a `WebKitWebView` wired for navigation, JS
@@ -223,7 +227,22 @@ class LinuxWindow implements NativeWindow {
     gtk.symbols.gtk_window_set_default_size(this.#window, options.width, options.height);
 
     this.#webContents = new LinuxWebContents(options.preloadScript);
-    gtk.symbols.gtk_window_set_child(this.#window, this.#webContents.view());
+    const appMenu = getCurrentAppMenu();
+    if (appMenu === undefined) {
+      // Default path — unchanged: the webview is the window's sole child.
+      gtk.symbols.gtk_window_set_child(this.#window, this.#webContents.view());
+    } else {
+      // App-menu path: stack a GtkPopoverMenuBar above the webview in a vertical
+      // box and insert the menu's action group so its items are live.
+      const menu = loadGtkMenuFFI();
+      const model = Number(appMenu.model) as unknown as Pointer;
+      const group = Number(appMenu.group) as unknown as Pointer;
+      const box = menu.symbols.gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+      menu.symbols.gtk_box_append(box, menu.symbols.gtk_popover_menu_bar_new_from_model(model));
+      menu.symbols.gtk_box_append(box, this.#webContents.view());
+      menu.symbols.gtk_widget_insert_action_group(this.#window, cstr('sambar'), group);
+      gtk.symbols.gtk_window_set_child(this.#window, box);
+    }
 
     this.#registry.connect(
       this.#window,

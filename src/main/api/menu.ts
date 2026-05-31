@@ -1,5 +1,6 @@
 import { UnsupportedPlatformError } from '../../common/errors';
 import { currentPlatform } from '../../common/platform';
+import { linuxMenuRealizer } from '../platform/linux/gtk-menu';
 import type { NativeMenuItemSpec } from '../platform/macos/cocoa-menu';
 import * as cocoaMenu from '../platform/macos/cocoa-menu';
 
@@ -77,6 +78,9 @@ const getRealizer = (): MenuRealizer => {
   }
   if (currentPlatform() === 'macos') {
     return macosRealizer;
+  }
+  if (currentPlatform() === 'linux') {
+    return linuxMenuRealizer;
   }
   throw new UnsupportedPlatformError(`Menu is not supported on ${currentPlatform()} yet`);
 };
