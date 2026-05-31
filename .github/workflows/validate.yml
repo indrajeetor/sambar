@@ -34,8 +34,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # WebKitGTK's bubblewrap sandbox and GPU acceleration are unavailable on
+      # the headless runner; disable them so the GTK/WebKitGTK tests can run.
       - name: Validate (Linux — under Xvfb for GTK tests)
         if: runner.os == 'Linux'
+        env:
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1"
+          WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          GDK_BACKEND: x11
         run: xvfb-run -a bun run validate
 
       - name: Validate (macOS)
