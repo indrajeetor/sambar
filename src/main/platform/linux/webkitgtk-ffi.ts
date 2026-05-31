@@ -40,6 +40,9 @@ export const WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START = 0;
  *   pointers passable as null for fire-and-forget (D022).
  * - `register_script_message_handler` is the WK6.0 3-arg form; the trailing
  *   world_name is {@link FFIType.pointer} (nullable; 0 = default world).
+ * - `webkit_user_script_new_for_world` is the named-world variant of
+ *   `webkit_user_script_new`; its 4th arg (`world_name`) is {@link FFIType.cstring}
+ *   (a real world name, e.g. `SambarPreload`) — the isolated-world injection path.
  */
 export const WEBKITGTK_FFI_SYMBOLS = {
   webkit_web_view_new: {
@@ -117,6 +120,17 @@ export const WEBKITGTK_FFI_SYMBOLS = {
   },
   webkit_user_script_new: {
     args: [FFIType.cstring, FFIType.i32, FFIType.i32, FFIType.pointer, FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+  webkit_user_script_new_for_world: {
+    args: [
+      FFIType.cstring,
+      FFIType.i32,
+      FFIType.i32,
+      FFIType.cstring,
+      FFIType.pointer,
+      FFIType.pointer,
+    ],
     returns: FFIType.pointer,
   },
 } as const;

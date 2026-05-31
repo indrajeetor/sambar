@@ -63,6 +63,20 @@ describe('WEBKITGTK_FFI_SYMBOLS (shape-only ABI assertions)', () => {
     expect(WEBKITGTK_FFI_SYMBOLS.webkit_user_script_new.returns).toBe(FFIType.pointer);
   });
 
+  it('declares user_script_new_for_world with a cstring world_name at index 3', () => {
+    const sym = WEBKITGTK_FFI_SYMBOLS.webkit_user_script_new_for_world;
+    expect(sym.args).toEqual([
+      FFIType.cstring,
+      FFIType.i32,
+      FFIType.i32,
+      FFIType.cstring,
+      FFIType.pointer,
+      FFIType.pointer,
+    ]);
+    expect(sym.args[3]).toBe(FFIType.cstring);
+    expect(sym.returns).toBe(FFIType.pointer);
+  });
+
   it('declares get_type as () -> u64 (GType for the construct-only path)', () => {
     expect(WEBKITGTK_FFI_SYMBOLS.webkit_web_view_get_type.args).toEqual([]);
     expect(WEBKITGTK_FFI_SYMBOLS.webkit_web_view_get_type.returns).toBe(FFIType.u64);
