@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { currentPlatform } from '../../../../../src/common/platform';
 import {
   createUrlSchemeHandler,
   handleStartTask,
@@ -32,15 +33,18 @@ describe('cocoa-url-scheme-handler exports', () => {
   });
 });
 
-describe('dispatcher injection seam', () => {
+// macOS-only: handleStartTask drives the ObjC runtime (to read the task's URL),
+// which is unavailable off macOS — on Linux it bails to the decline path without
+// reaching the dispatcher, so this seam test must run on macOS only.
+describe.skipIf(currentPlatform() !== 'macos')('dispatcher injection seam', () => {
   test('a substituted dispatcher receiving a null task url declines without throwing', () => {
     let seen: string | undefined;
     setUrlSchemeDispatcherForTesting((url) => {
       seen = url;
       return undefined;
     });
-    // task = 0n means requestUrlOf returns '' without touching real ObjC; the
-    // decline path (failTask) is best-effort and swallows on a null task.
+    // task = 0n: on macOS requestUrlOf returns '' (the dispatcher is still called
+    // with the empty url); the decline path (failTask) is best-effort.
     expect(() => handleStartTask(0n)).not.toThrow();
     expect(seen).toBe('');
   });
