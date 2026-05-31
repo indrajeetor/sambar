@@ -109,12 +109,113 @@ export const appBundleLayout = (out: string, name: string): AppBundleLayout => {
   };
 };
 
+/**
+ * Build the `codesign` argv that signs an `.app` bundle in place. Pure.
+ *
+ * Uses `--force --deep` so an existing signature is replaced and nested code is
+ * signed, and `--options runtime` to opt the bundle into the macOS Hardened
+ * Runtime (required for notarization). `identity` is passed verbatim after
+ * `--sign`: a real `Developer ID Application: …` identity (which must be present
+ * in the keychain) or `-` for an ad-hoc signature that needs no certificate.
+ */
+export const buildCodesignArgs = (identity: string, appPath: string): string[] => [
+  '--force',
+  '--deep',
+  '--options',
+  'runtime',
+  '--sign',
+  identity,
+  appPath,
+];
+
+/** Build the `codesign --verify --strict` argv for an `.app` bundle. Pure. */
+export const buildCodesignVerifyArgs = (appPath: string): string[] => [
+  '--verify',
+  '--strict',
+  appPath,
+];
+
+export type NotarizeOptions = {
+  readonly appPath: string;
+  readonly appleId: string;
+  readonly teamId: string;
+  readonly password: string;
+};
+
+/**
+ * Build the `xcrun notarytool submit …` argv for an `.app` bundle. Pure.
+ *
+ * This is a documented HOOK for a real release: it is NOT invoked by the build
+ * (it needs Apple credentials and network). `password` is an app-specific
+ * password for the Apple ID. `--wait` blocks until Apple finishes processing.
+ */
+export const buildNotarizeArgs = (opts: NotarizeOptions): string[] => [
+  'xcrun',
+  'notarytool',
+  'submit',
+  opts.appPath,
+  '--apple-id',
+  opts.appleId,
+  '--team-id',
+  opts.teamId,
+  '--password',
+  opts.password,
+  '--wait',
+];
+
+/**
+ * Build the `xcrun stapler staple …` argv for an `.app` bundle. Pure.
+ *
+ * Also a documented HOOK: stapling attaches the notarization ticket to the
+ * bundle and is only meaningful after a successful notarytool submission.
+ */
+export const buildStapleArgs = (appPath: string): string[] => [
+  'xcrun',
+  'stapler',
+  'staple',
+  appPath,
+];
+
+/**
+ * Code-sign an `.app` at `appPath` with `identity` (a real `Developer ID
+ * Application: …` identity, or `-` for ad-hoc) and verify the result. Throws
+ * with the tool's stderr on a non-zero exit from either step.
+ */
+export const codesignApp = async (identity: string, appPath: string): Promise<void> => {
+  const sign = Bun.spawn(['codesign', ...buildCodesignArgs(identity, appPath)], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const signExit = await sign.exited;
+  if (signExit !== 0) {
+    const stderr = await new Response(sign.stderr).text();
+    throw new Error(`codesign failed (exit ${signExit}):\n${stderr}`);
+  }
+
+  const verify = Bun.spawn(['codesign', ...buildCodesignVerifyArgs(appPath)], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const verifyExit = await verify.exited;
+  if (verifyExit !== 0) {
+    const stderr = await new Response(verify.stderr).text();
+    throw new Error(`codesign --verify failed (exit ${verifyExit}):\n${stderr}`);
+  }
+};
+
+/** Signs an `.app` bundle in place. Injectable so unit tests need not shell out. */
+export type SignApp = (identity: string, appPath: string) => Promise<void>;
+
 export type BuildMacAppOptions = {
   readonly entry: string;
   readonly name: string;
   readonly id?: string;
   readonly out?: string;
   readonly icon?: string;
+  /** When set, code-sign the finished bundle with this identity (`-` = ad-hoc). */
+  readonly sign?: string;
+  /** Seam for the signer; defaults to {@link codesignApp}. Stub it in tests. */
+  readonly signApp?: SignApp;
 };
 
 /** Compile `entry` to a standalone binary at `outfile`. Throws on a non-zero exit. */
@@ -162,6 +263,13 @@ export const buildMacApp = async (opts: BuildMacAppOptions): Promise<string> => 
       : { name: opts.name, bundleId, version: SAMBAR_VERSION, iconFile },
   );
   writeFileSync(layout.infoPlistPath, plist);
+
+  // Sign last, once the bundle (binary + Info.plist + resources) is fully laid
+  // out, so the signature covers the final contents.
+  if (opts.sign !== undefined) {
+    const signApp = opts.signApp ?? codesignApp;
+    await signApp(opts.sign, layout.appDir);
+  }
 
   return layout.appDir;
 };
