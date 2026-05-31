@@ -15,6 +15,7 @@ import type {
   Rect,
 } from '../native';
 import { getContentWorld, pageWorld } from './cocoa-content-world';
+import { buildExecWrapper } from './cocoa-exec-wrapper';
 import { nsString, nsStringToString } from './cocoa-foundation';
 import {
   msgSendI64,
@@ -50,8 +51,19 @@ const NS_BACKING_STORE_BUFFERED = 2n;
 const NS_ACTIVATION_POLICY_REGULAR = 0n;
 const WK_INJECTION_TIME_AT_DOCUMENT_START = 0n;
 const SCRIPT_MESSAGE_HANDLER_NAME = 'sambar';
+/** Page-world handler name `executeJavaScript` posts its result to (D022). */
+const EXEC_RESULT_HANDLER_NAME = 'sambarExec';
+/** Reject + clear a pending `executeJavaScript` after this long (ms). */
+const EXEC_TIMEOUT_MS = 30_000;
 /** Name of the isolated `WKContentWorld` the bridge + user preload run in. */
 export const PRELOAD_WORLD_NAME = 'SambarPreload';
+
+/** A pending `executeJavaScript` awaiting its page-world result message. */
+type PendingExec = {
+  readonly resolve: (value: unknown) => void;
+  readonly reject: (reason: Error) => void;
+  readonly timer: ReturnType<typeof setTimeout>;
+};
 
 const dispatchScript = (envelopeJson: string): string =>
   `window.__sambar && window.__sambar._dispatch(${JSON.stringify(envelopeJson)});`;
@@ -84,6 +96,8 @@ class MacOSWebContents implements NativeWebContents {
   readonly #isolatedWorld: Handle;
   #envelopeCallback: ((envelopeJson: string) => void) | undefined;
   #didFinishLoadCallback: (() => void) | undefined;
+  readonly #pendingExecs = new Map<number, PendingExec>();
+  #nextExecId = 1;
 
   constructor(webview: Handle, isolatedWorld: Handle) {
     this.#webview = webview;
@@ -93,6 +107,43 @@ class MacOSWebContents implements NativeWebContents {
   /** @internal Called by the script message handler with renderer envelopes. */
   deliverRendererEnvelope(envelopeJson: string): void {
     this.#envelopeCallback?.(envelopeJson);
+  }
+
+  /**
+   * @internal Called by the page-world `sambarExec` handler with the JSON
+   * `{ execId, ok, result?, error? }` outcome of an `executeJavaScript` call.
+   */
+  deliverExecResult(json: string): void {
+    let outcome: { execId?: number; ok?: boolean; result?: unknown; error?: string };
+    try {
+      outcome = JSON.parse(json);
+    } catch (error) {
+      log.warn('dropping malformed exec result', error);
+      return;
+    }
+    if (typeof outcome.execId !== 'number') {
+      return;
+    }
+    const pending = this.#pendingExecs.get(outcome.execId);
+    if (pending === undefined) {
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.#pendingExecs.delete(outcome.execId);
+    if (outcome.ok) {
+      pending.resolve(outcome.result);
+    } else {
+      pending.reject(new Error(outcome.error ?? 'executeJavaScript failed'));
+    }
+  }
+
+  /** @internal Reject every still-pending exec; called on window close. */
+  rejectPendingExecs(): void {
+    for (const [, pending] of this.#pendingExecs) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('executeJavaScript aborted: web contents destroyed'));
+    }
+    this.#pendingExecs.clear();
   }
 
   /** @internal Called by the navigation delegate when a load finishes. */
@@ -157,9 +208,23 @@ class MacOSWebContents implements NativeWebContents {
     return msgSendReturnsU8(this.#webview, cocoa().selectors.get('canGoForward')) === 1;
   }
 
-  executeJavaScript(code: string): void {
-    // Public API runs in the PAGE world (Electron semantics: the main world).
-    this.#evaluateInWorld(code, pageWorld());
+  /**
+   * Evaluate `code` in the PAGE world (Electron's main world) and resolve to its
+   * completion value. A completion-handler block crashes Bun (D022), so the
+   * result returns out-of-band: a wrapper runs the code and posts the outcome to
+   * the page-world `sambarExec` handler, which settles the matching Promise.
+   */
+  executeJavaScript(code: string): Promise<unknown> {
+    const execId = this.#nextExecId;
+    this.#nextExecId += 1;
+    return new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#pendingExecs.delete(execId);
+        reject(new Error(`executeJavaScript timed out after ${EXEC_TIMEOUT_MS}ms`));
+      }, EXEC_TIMEOUT_MS);
+      this.#pendingExecs.set(execId, { resolve, reject, timer });
+      this.#evaluateInWorld(buildExecWrapper(execId, EXEC_RESULT_HANDLER_NAME, code), pageWorld());
+    });
   }
 
   /**
@@ -393,6 +458,19 @@ class MacOSApplication implements NativeApplication {
       nsString(SCRIPT_MESSAGE_HANDLER_NAME),
     );
 
+    // Second handler in the PAGE world: the return channel for the public
+    // `executeJavaScript`, whose wrapper posts its result here (D022). The page
+    // world is a WebKit-interned singleton, so `pageWorld()` returns the same
+    // handle at teardown — no need to retain the autoreleased value here.
+    const execHandler = createScriptMessageHandler((json) => contents?.deliverExecResult(json));
+    msgSendPtr3(
+      userContentController,
+      rt.selectors.get('addScriptMessageHandler:contentWorld:name:'),
+      execHandler.handle,
+      pageWorld(),
+      nsString(EXEC_RESULT_HANDLER_NAME),
+    );
+
     const addUserScript = (source: string, world: Handle): void => {
       const userScript = msgSendPtrI64U8Ptr(
         rt.msgSend(rt.classes.get('WKUserScript'), rt.selectors.get('alloc')),
@@ -436,8 +514,9 @@ class MacOSApplication implements NativeApplication {
     msgSendPtr(window, rt.selectors.get('setContentView:'), webview);
     msgSendPtr(window, rt.selectors.get('setTitle:'), nsString(options.title));
 
-    // Teardown run on window close: detach the handler from the isolated world
-    // then drop its registry entry + release the native instance.
+    // Teardown run on window close: detach both handlers from their worlds, drop
+    // their registry entries + release the native instances, and reject any
+    // exec Promise still awaiting a result it can no longer receive.
     const teardown = (): void => {
       msgSendPtrPtr(
         userContentController,
@@ -446,6 +525,14 @@ class MacOSApplication implements NativeApplication {
         isolatedWorld,
       );
       handler.dispose();
+      msgSendPtrPtr(
+        userContentController,
+        rt.selectors.get('removeScriptMessageHandlerForName:contentWorld:'),
+        nsString(EXEC_RESULT_HANDLER_NAME),
+        pageWorld(),
+      );
+      execHandler.dispose();
+      contents?.rejectPendingExecs();
     };
 
     const nativeWindow = new MacOSWindow(

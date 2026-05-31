@@ -84,9 +84,14 @@ export class WebContents extends EventEmitter {
     return this.#native.canGoForward();
   }
 
-  /** Evaluate JavaScript in the page (fire-and-forget, D022). */
-  executeJavaScript(code: string): void {
-    this.#native.executeJavaScript(code);
+  /**
+   * Evaluate JavaScript in the page and resolve to the script's completion
+   * value (Electron semantics). A bare expression resolves to its value; a
+   * returned Promise resolves to its fulfilled value; a thrown error rejects.
+   * Only JSON-serializable results survive (`JSON.stringify` semantics).
+   */
+  executeJavaScript(code: string): Promise<unknown> {
+    return this.#native.executeJavaScript(code);
   }
 
   /** Open the developer tools (web inspector) for this view. Best-effort. */

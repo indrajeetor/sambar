@@ -15,6 +15,7 @@ import type {
   NativeWindowOptions,
   Rect,
 } from '../native';
+import { evaluateJavaScriptOnView } from './eval-js';
 import { loadGtkFFI } from './gtk-ffi';
 import { createLinuxDrain } from './gtk-run-loop';
 import { makeCloseRequestCallback, makeLoadChangedCallback, SignalRegistry } from './gtk-signals';
@@ -139,18 +140,13 @@ class LinuxWebContents implements NativeWebContents {
     return webkit.symbols.webkit_web_view_can_go_forward(this.#view) !== 0;
   }
 
-  executeJavaScript(code: string): void {
-    const webkit = loadWebKitGtkFFI();
-    webkit.symbols.webkit_web_view_evaluate_javascript(
-      this.#view,
-      cstr(code),
-      -1n,
-      null,
-      null,
-      null,
-      null,
-      null,
-    );
+  /**
+   * Evaluate `code` in the PAGE world (world_name = NULL) and resolve to its
+   * completion value. The async result returns via a real `GAsyncReadyCallback`
+   * (a plain C callback, safe with bun:ffi — NOT a block, so no D022 hazard).
+   */
+  executeJavaScript(code: string): Promise<unknown> {
+    return evaluateJavaScriptOnView(this.#view, code);
   }
 
   openDevTools(): void {

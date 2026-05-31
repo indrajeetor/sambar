@@ -55,8 +55,12 @@ export interface NativeWebContents {
   canGoBack(): boolean;
   /** Whether there is a next history entry to go forward to. */
   canGoForward(): boolean;
-  /** Evaluate JS in the page. Fire-and-forget — no result is returned (D022). */
-  executeJavaScript(code: string): void;
+  /**
+   * Evaluate JS in the page world and resolve to the script's completion value
+   * (Electron semantics). Only JSON-serializable results survive the boundary
+   * (`JSON.stringify` semantics); a thrown error or rejected Promise rejects.
+   */
+  executeJavaScript(code: string): Promise<unknown>;
   /** Open the native web inspector (devtools) for this view. Best-effort. */
   openDevTools(): void;
   /** Deliver a raw IPC envelope (JSON) to the renderer's preload bridge. */

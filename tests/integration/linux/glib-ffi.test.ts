@@ -11,6 +11,7 @@ if (currentPlatform() === 'linux') {
         'g_main_context_iteration',
         'g_main_context_pending',
         'g_free',
+        'g_error_free',
       ] as const) {
         expect(typeof lib.symbols[name]).toBe('function');
       }

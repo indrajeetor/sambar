@@ -22,7 +22,7 @@ const makeFakeNative = (): {
     goForward: () => undefined,
     canGoBack: () => false,
     canGoForward: () => false,
-    executeJavaScript: () => undefined,
+    executeJavaScript: () => Promise.resolve(undefined),
     openDevTools: () => undefined,
     sendEnvelopeToRenderer: (json) => sent.push(json),
     onRendererEnvelope: (cb) => {
@@ -147,6 +147,28 @@ describe('WebContents.openDevTools', () => {
   });
 });
 
+describe('WebContents.executeJavaScript', () => {
+  test('returns the native eval Promise resolving to the script result', async () => {
+    const { native } = makeFakeNative();
+    const wc = new WebContents({
+      ...native,
+      executeJavaScript: (code) => Promise.resolve(`evaluated:${code}`),
+    });
+    const promise = wc.executeJavaScript('1 + 1');
+    expect(promise).toBeInstanceOf(Promise);
+    expect(await promise).toBe('evaluated:1 + 1');
+  });
+
+  test('propagates a native eval rejection', async () => {
+    const { native } = makeFakeNative();
+    const wc = new WebContents({
+      ...native,
+      executeJavaScript: () => Promise.reject(new Error('boom')),
+    });
+    await expect(wc.executeJavaScript('throw 1')).rejects.toThrow('boom');
+  });
+});
+
 describe('WebContents navigation', () => {
   test('delegates reload, goBack and goForward to the native view', () => {
     const calls: string[] = [];
@@ -159,7 +181,7 @@ describe('WebContents navigation', () => {
       goForward: () => calls.push('goForward'),
       canGoBack: () => true,
       canGoForward: () => false,
-      executeJavaScript: () => undefined,
+      executeJavaScript: () => Promise.resolve(undefined),
       openDevTools: () => undefined,
       sendEnvelopeToRenderer: () => undefined,
       onRendererEnvelope: () => undefined,

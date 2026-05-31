@@ -70,15 +70,15 @@ if (currentPlatform() === 'macos') {
       }
     });
 
-    test('executeJavaScript does not crash', async () => {
+    test('executeJavaScript resolves to the script completion value', async () => {
       const app = createMacOSApplication();
       app.start();
       try {
         const win = app.createWindow({ width: 400, height: 300, title: 't', show: true });
         win.webContents.loadHTML('<html><body>hi</body></html>', 'about:blank');
-        await delay(150);
-        expect(() => win.webContents.executeJavaScript('document.title = "x";')).not.toThrow();
-        await delay(50);
+        await delay(250);
+        const result = await win.webContents.executeJavaScript('2 + 3');
+        expect(result).toBe(5);
       } finally {
         app.quit();
       }
