@@ -1,45 +1,81 @@
 import { UnsupportedPlatformError } from '../../common/errors';
 import { currentPlatform } from '../../common/platform';
+import { linuxClipboardBackend } from '../platform/linux/gtk-clipboard';
 import * as macosClipboard from '../platform/macos/cocoa-clipboard';
 
 /**
  * System clipboard access — the drop-in equivalent of Electron's `clipboard`.
  *
- * A process-wide singleton (not tied to a window), mirroring Electron. Today it
- * covers plain text on macOS; Linux clipboard support arrives with the GTK
- * backend. Methods throw {@link UnsupportedPlatformError} on platforms without a
- * backend rather than silently no-op'ing.
+ * A process-wide singleton (not tied to a window), mirroring Electron. Covers
+ * plain text on macOS and Linux (GTK 4). Methods throw
+ * {@link UnsupportedPlatformError} on platforms without a backend rather than
+ * silently no-op'ing.
+ *
+ * `readText` is asynchronous on BOTH platforms (returns a `Promise<string>`): a
+ * deliberate uniform contract, since GDK 4's clipboard read is async-only. The
+ * macOS backend reads synchronously under the hood and resolves the value.
+ * `writeText`/`clear` stay synchronous on both platforms.
  */
-
-const unsupported = (method: string): never => {
-  throw new UnsupportedPlatformError(
-    `clipboard.${method} is not supported on ${currentPlatform()} yet`,
-  );
-};
 
 export type Clipboard = {
   /** Read the clipboard's plain-text contents, or `''` if it holds no text. */
-  readText(): string;
+  readText(): Promise<string>;
   /** Replace the clipboard's contents with `text` as plain text. */
   writeText(text: string): void;
   /** Clear the clipboard. */
   clear(): void;
 };
 
+/**
+ * The native backend the public clipboard API delegates to.
+ *
+ * `readText` may return its value synchronously (a string) or as a Promise; the
+ * API's `Promise.resolve(...)` flattens both into the uniform `Promise<string>`
+ * contract. `writeText`/`clear` are synchronous on every platform. The backend
+ * is injectable so the dispatch logic is unit-testable without a real clipboard.
+ */
+export type ClipboardBackend = {
+  readText(): string | Promise<string>;
+  writeText(text: string): void;
+  clear(): void;
+};
+
+const macosBackend: ClipboardBackend = {
+  readText: () => macosClipboard.readText(),
+  writeText: (text) => macosClipboard.writeText(text),
+  clear: () => macosClipboard.clear(),
+};
+
+let backend: ClipboardBackend | undefined;
+
+const getBackend = (): ClipboardBackend => {
+  if (backend !== undefined) {
+    return backend;
+  }
+  if (currentPlatform() === 'macos') {
+    return macosBackend;
+  }
+  if (currentPlatform() === 'linux') {
+    return linuxClipboardBackend;
+  }
+  throw new UnsupportedPlatformError(`clipboard is not supported on ${currentPlatform()} yet`);
+};
+
+/** Override the native clipboard backend. Test-only. */
+export const setClipboardBackendForTesting = (fake: ClipboardBackend | undefined): void => {
+  backend = fake;
+};
+
 export const clipboard: Clipboard = {
+  // `Promise.resolve` flattens a sync string (macOS) or a Promise (Linux/macOS
+  // wrapper) uniformly into the async contract without double-wrapping.
   readText() {
-    return currentPlatform() === 'macos' ? macosClipboard.readText() : unsupported('readText');
+    return Promise.resolve(getBackend().readText());
   },
   writeText(text) {
-    if (currentPlatform() !== 'macos') {
-      unsupported('writeText');
-    }
-    macosClipboard.writeText(text);
+    getBackend().writeText(text);
   },
   clear() {
-    if (currentPlatform() !== 'macos') {
-      unsupported('clear');
-    }
-    macosClipboard.clear();
+    getBackend().clear();
   },
 };

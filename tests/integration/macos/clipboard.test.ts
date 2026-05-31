@@ -4,26 +4,32 @@ import { currentPlatform } from '../../../src/common/platform';
 
 if (currentPlatform() === 'macos') {
   describe('clipboard on macOS', () => {
-    test('writeText then readText round-trips plain text', () => {
+    test('writeText then readText round-trips plain text', async () => {
       clipboard.writeText('sambar clipboard test');
-      expect(clipboard.readText()).toBe('sambar clipboard test');
+      expect(await clipboard.readText()).toBe('sambar clipboard test');
     });
 
-    test('writeText replaces previous contents', () => {
+    test('writeText replaces previous contents', async () => {
       clipboard.writeText('first');
       clipboard.writeText('second');
-      expect(clipboard.readText()).toBe('second');
+      expect(await clipboard.readText()).toBe('second');
     });
 
-    test('round-trips UTF-8 content', () => {
+    test('round-trips UTF-8 content', async () => {
       clipboard.writeText('café — 日本語 — 🎉');
-      expect(clipboard.readText()).toBe('café — 日本語 — 🎉');
+      expect(await clipboard.readText()).toBe('café — 日本語 — 🎉');
     });
 
-    test('clear empties the clipboard', () => {
+    test('clear empties the clipboard', async () => {
       clipboard.writeText('to be cleared');
       clipboard.clear();
-      expect(clipboard.readText()).toBe('');
+      expect(await clipboard.readText()).toBe('');
+    });
+
+    test('readText returns a Promise (uniform async contract)', () => {
+      clipboard.writeText('promise-check');
+      const result = clipboard.readText();
+      expect(result).toBeInstanceOf(Promise);
     });
   });
 }
