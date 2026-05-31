@@ -39,10 +39,11 @@ describe('IMPLEMENTED_MODULES', () => {
     expect(implemented).toContain('Notification');
     expect(implemented).toContain('screen');
     expect(implemented).toContain('globalShortcut');
+    expect(implemented).toContain('Tray');
   });
 
-  test('does not yet claim still-unshipped modules like Tray', () => {
-    expect(implemented).not.toContain('Tray');
+  test('does not yet claim still-unshipped modules like autoUpdater', () => {
+    expect(implemented).not.toContain('autoUpdater');
   });
 });
 
@@ -55,8 +56,12 @@ describe('isImplemented', () => {
     expect(isImplemented('Menu')).toBe(true);
   });
 
+  test('is true for the Tray module', () => {
+    expect(isImplemented('Tray')).toBe(true);
+  });
+
   test('is false for a known-but-unshipped module', () => {
-    expect(isImplemented('Tray')).toBe(false);
+    expect(isImplemented('autoUpdater')).toBe(false);
   });
 
   test('is false for an unknown name', () => {

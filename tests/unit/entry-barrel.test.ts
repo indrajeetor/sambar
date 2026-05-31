@@ -31,6 +31,11 @@ describe('sambar/main entry barrel', () => {
     expect(typeof sambarMain.screen.getAllDisplays).toBe('function');
     expect(typeof sambarMain.screen.getPrimaryDisplay).toBe('function');
   });
+
+  test('exports the Tray class', () => {
+    expect(sambarMain.Tray).toBeDefined();
+    expect(typeof sambarMain.Tray).toBe('function');
+  });
 });
 
 describe('sambar (root) entry barrel', () => {

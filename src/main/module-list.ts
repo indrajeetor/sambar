@@ -69,6 +69,7 @@ export const IMPLEMENTED_MODULES = [
   'Notification',
   'screen',
   'shell',
+  'Tray',
 ] as const;
 
 const implemented: ReadonlySet<string> = new Set(IMPLEMENTED_MODULES);

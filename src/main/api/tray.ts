@@ -1,0 +1,141 @@
+import { EventEmitter } from 'node:events';
+import { UnsupportedPlatformError } from '../../common/errors';
+import { currentPlatform } from '../../common/platform';
+import { linuxTrayBackend } from '../platform/linux/tray-unsupported';
+import { macosTrayBackend } from '../platform/macos/cocoa-tray';
+import type { Menu } from './menu';
+
+/**
+ * A status-bar / system-tray icon — the drop-in equivalent of Electron's `Tray`.
+ *
+ * Extends Node's {@link EventEmitter} so the listener API (`on`/`once`/…) matches
+ * Electron's contract. The native status item is created eagerly in the
+ * constructor and reconfigured through the forwarding methods.
+ *
+ * PLATFORMS:
+ * - macOS: real `NSStatusItem`; works un-bundled (`bun main.ts`).
+ * - Linux: honestly DEFERRED — constructing a Tray throws
+ *   {@link UnsupportedPlatformError}. GTK4 removed `GtkStatusIcon`; the modern
+ *   `StatusNotifierItem` (D-Bus) / `libayatana-appindicator` backend is a future
+ *   effort. Sambar does NOT stub a no-op that pretends to work.
+ *
+ * IMAGE: Sambar has no `nativeImage` yet, so the constructor and {@link setImage}
+ * accept a filesystem path string to an icon file. A bad/unreadable path does not
+ * crash; the icon is simply not set.
+ *
+ * EVENTS: `click` is emitted when the status item is activated (its button
+ * action). NOTE: on macOS, when a context menu is set, AppKit consumes the click
+ * to present the menu, so `click` fires only when no menu is set — this mirrors
+ * Electron's behaviour where a context menu shows on click. `right-click` /
+ * `double-click` are DEFERRED (not advertised) until a real event source is
+ * wired.
+ *
+ * The native backend is injectable (mirrors `notification`/`menu`/`screen`) so
+ * the class's forwarding and lifecycle are unit-testable with a fake — no FFI.
+ */
+
+/** A single live native status item the public `Tray` API drives. */
+export type TrayInstance = {
+  setToolTip(toolTip: string): void;
+  setTitle(title: string): void;
+  setImage(image: string): void;
+  /** Install an `NSMenu` realized from `menu`, or clear it with `null`. */
+  setContextMenu(menu: Menu | null): void;
+  /** Register the callback fired when the status item is activated. */
+  onClick(callback: () => void): void;
+  /** Tear the status item down. Must be idempotent. */
+  destroy(): void;
+  isDestroyed(): boolean;
+};
+
+/** The native backend the public `Tray` API delegates to. */
+export type TrayBackend = {
+  /** Create a native status item for the icon at `image` (a filesystem path). */
+  create(image: string): TrayInstance;
+};
+
+const macosBackend: TrayBackend = macosTrayBackend;
+const linuxBackend: TrayBackend = linuxTrayBackend;
+
+let backend: TrayBackend | undefined;
+
+const getBackend = (): TrayBackend => {
+  if (backend !== undefined) {
+    return backend;
+  }
+  if (currentPlatform() === 'macos') {
+    return macosBackend;
+  }
+  if (currentPlatform() === 'linux') {
+    return linuxBackend;
+  }
+  throw new UnsupportedPlatformError(`Tray is not supported on ${currentPlatform()} yet`);
+};
+
+/** Override the native tray backend. Test-only. */
+export const setTrayBackendForTesting = (fake: TrayBackend | undefined): void => {
+  backend = fake;
+};
+
+export class Tray extends EventEmitter {
+  #instance: TrayInstance;
+  #destroyed = false;
+
+  /**
+   * Create a tray with the icon at `image` (a filesystem path). On Linux this
+   * throws {@link UnsupportedPlatformError} (deferred — see the class doc).
+   */
+  constructor(image: string) {
+    super();
+    this.#instance = getBackend().create(image);
+    this.#instance.onClick(() => {
+      this.emit('click');
+    });
+  }
+
+  /** Set the hover tooltip. No-op after {@link destroy}. */
+  setToolTip(toolTip: string): void {
+    if (this.#destroyed) {
+      return;
+    }
+    this.#instance.setToolTip(toolTip);
+  }
+
+  /** Set the text shown next to the icon (macOS status bar). No-op after destroy. */
+  setTitle(title: string): void {
+    if (this.#destroyed) {
+      return;
+    }
+    this.#instance.setTitle(title);
+  }
+
+  /** Replace the icon with the image at `image` (a filesystem path). No-op after destroy. */
+  setImage(image: string): void {
+    if (this.#destroyed) {
+      return;
+    }
+    this.#instance.setImage(image);
+  }
+
+  /** Attach a context menu (shown on click), or clear it with `null`. No-op after destroy. */
+  setContextMenu(menu: Menu | null): void {
+    if (this.#destroyed) {
+      return;
+    }
+    this.#instance.setContextMenu(menu);
+  }
+
+  /** Remove the status item. Idempotent. */
+  destroy(): void {
+    if (this.#destroyed) {
+      return;
+    }
+    this.#destroyed = true;
+    this.#instance.destroy();
+  }
+
+  /** Whether {@link destroy} has been called. */
+  isDestroyed(): boolean {
+    return this.#destroyed;
+  }
+}
