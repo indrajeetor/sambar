@@ -289,9 +289,21 @@ export const generateIsolatedHostSource = (channelId: string): string => {
     }
     var methods = [];
     var values = {};
+    var seen = Object.create(null);
     var names = Object.keys(api);
     for (var i = 0; i < names.length; i += 1) {
       var name = names[i];
+      // Reject prototype-pollution member names that would corrupt the page
+      // target built via Object.defineProperty / the announce payload.
+      if (name === '__proto__' || name === 'constructor' || name === 'prototype') {
+        throw new Error('contextBridge: member name "' + name + '" is not allowed');
+      }
+      // Defensive collision check (Object.keys dedupes own keys, but guard so a
+      // future merge of multiple sources cannot silently shadow a member).
+      if (seen[name]) {
+        throw new Error('contextBridge: member "' + name + '" is defined more than once');
+      }
+      seen[name] = true;
       if (typeof api[name] === 'function') {
         methods.push(name);
       } else {

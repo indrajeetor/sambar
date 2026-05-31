@@ -282,4 +282,11 @@ describe('page object hardening', () => {
     createContextBridge(transport(doc)).exposeInMainWorld('myApi', { ping: () => 'pong' });
     expect(Object.getPrototypeOf(page.read('myApi'))).toBe(null);
   });
+
+  test('a prototype-pollution member name is rejected at expose time', () => {
+    const doc = new MockDocument();
+    const expose = makeIsolatedHost(doc);
+    expect(() => expose('myApi', { constructor: () => 1 })).toThrow(/not allowed/i);
+    expect(() => expose('other', { prototype: 1 })).toThrow(/not allowed/i);
+  });
 });
