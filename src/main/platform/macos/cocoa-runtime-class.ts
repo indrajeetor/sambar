@@ -15,7 +15,13 @@ import { type Handle, LIBOBJC_PATH, macOSLibraryAccessor } from './objc';
  * `_cmd` (SEL); declared args follow. All are modelled as `u64` handles (D029).
  */
 
-/** A JS-backed method to attach to a runtime class. */
+/**
+ * A JS-backed method to attach to a runtime class.
+ *
+ * `returns` defaults to `'void'`. A `'bool'` method's `impl` must return `0`/`1`
+ * (NO/YES) — used for delegate predicates like `windowShouldClose:` whose BOOL
+ * answer flows back to AppKit through the IMP's return register.
+ */
 export type ObjcMethodSpec = {
   /** The selector name, e.g. `userContentController:didReceiveScriptMessage:`. */
   readonly selector: string;
@@ -23,7 +29,13 @@ export type ObjcMethodSpec = {
   readonly typeEncoding: string;
   /** The declared (post-`self`/`_cmd`) argument kinds; currently all objects. */
   readonly args: ReadonlyArray<'object'>;
-  /** The JS implementation. Receives `(self, _cmd, ...args)` as bigint handles. */
+  /** Return kind; defaults to `'void'`. */
+  readonly returns?: 'void' | 'bool';
+  /**
+   * The JS implementation. Receives `(self, _cmd, ...args)` as bigint handles.
+   * A `returns: 'bool'` method's impl must produce `0`/`1`; the build wrapper
+   * reads that runtime value (a `() => number` is assignable here too).
+   */
   readonly impl: (self: Handle, cmd: Handle, ...args: Handle[]) => void;
 };
 
@@ -50,6 +62,19 @@ const retainedCallbacks: JSCallback[] = [];
 
 const buildCallback = (method: ObjcMethodSpec): JSCallback => {
   const argTypes = [FFIType.u64, FFIType.u64, ...method.args.map(() => FFIType.u64)];
+  if (method.returns === 'bool') {
+    return new JSCallback(
+      (...raw: number[]): number => {
+        const handles = raw.map((value) => BigInt(value)) as [Handle, Handle, ...Handle[]];
+        // A BOOL IMP must return 0/1; the spec types `impl` as `void` for the
+        // common case, so read the runtime value through `unknown` and coerce a
+        // stray non-1 to 0 (NO) defensively.
+        const result = (method.impl as (...a: Handle[]) => unknown)(...handles);
+        return result === 1 ? 1 : 0;
+      },
+      { args: argTypes, returns: FFIType.u8 },
+    );
+  }
   return new JSCallback(
     (...raw: number[]) => {
       const handles = raw.map((value) => BigInt(value)) as [Handle, Handle, ...Handle[]];
