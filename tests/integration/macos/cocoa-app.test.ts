@@ -29,9 +29,10 @@ if (currentPlatform() === 'macos') {
       expect(getDockBadge()).toBe('');
     });
 
-    test('bounceDock and showAboutPanel do not throw', () => {
-      expect(() => bounceDock(false)).not.toThrow();
-      expect(() => showAboutPanel()).not.toThrow();
+    // Not invoked: showAboutPanel opens a window, bounceDock bounces the dock.
+    test('bounceDock and showAboutPanel resolve as callable exports', () => {
+      expect(typeof bounceDock).toBe('function');
+      expect(typeof showAboutPanel).toBe('function');
     });
   });
 }
