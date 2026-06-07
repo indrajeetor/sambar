@@ -25,10 +25,30 @@ export const resetWebContentsIdsForTesting = (): void => {
   nextId = 1;
 };
 
+/** Build the page-world script that injects a keyed `<style>` for `insertCSS`. */
+const buildInsertCssScript = (key: string, css: string): string =>
+  `(() => {
+    const style = document.createElement('style');
+    style.setAttribute('data-sambar-css-key', ${JSON.stringify(key)});
+    style.textContent = ${JSON.stringify(css)};
+    (document.head || document.documentElement).appendChild(style);
+  })()`;
+
+/** Build the page-world script that removes the keyed `<style>` for `removeInsertedCSS`. */
+const buildRemoveCssScript = (key: string): string =>
+  `(() => {
+    for (const el of document.querySelectorAll('style[data-sambar-css-key]')) {
+      if (el.getAttribute('data-sambar-css-key') === ${JSON.stringify(key)}) {
+        el.remove();
+      }
+    }
+  })()`;
+
 export class WebContents extends EventEmitter {
   /** Process-unique id, matching Electron's `webContents.id`. */
   readonly id: number;
   readonly #native: NativeWebContents;
+  #cssCounter = 0;
 
   constructor(native: NativeWebContents) {
     super();
@@ -92,6 +112,23 @@ export class WebContents extends EventEmitter {
    */
   executeJavaScript(code: string): Promise<unknown> {
     return this.#native.executeJavaScript(code);
+  }
+
+  /**
+   * Inject a `<style>` block into the page and resolve to a key that
+   * {@link removeInsertedCSS} can later use to remove it (Electron semantics).
+   * Works on both backends via the page-world exec channel — no native call.
+   */
+  async insertCSS(css: string): Promise<string> {
+    this.#cssCounter += 1;
+    const key = `sambar-inserted-css-${this.id}-${this.#cssCounter}`;
+    await this.#native.executeJavaScript(buildInsertCssScript(key, css));
+    return key;
+  }
+
+  /** Remove a stylesheet previously added with {@link insertCSS}. */
+  async removeInsertedCSS(key: string): Promise<void> {
+    await this.#native.executeJavaScript(buildRemoveCssScript(key));
   }
 
   /** Open the developer tools (web inspector) for this view. Best-effort. */

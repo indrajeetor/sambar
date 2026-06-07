@@ -7,10 +7,12 @@ import type { NativeWebContents } from '../../../../src/main/platform/native';
 const makeFakeNative = (): {
   native: NativeWebContents;
   sent: string[];
+  execs: string[];
   fireRenderer: (json: string) => void;
   fireDidFinishLoad: () => void;
 } => {
   const sent: string[] = [];
+  const execs: string[] = [];
   let onEnvelope: ((json: string) => void) | undefined;
   let onLoad: (() => void) | undefined;
   const native: NativeWebContents = {
@@ -22,7 +24,10 @@ const makeFakeNative = (): {
     goForward: () => undefined,
     canGoBack: () => false,
     canGoForward: () => false,
-    executeJavaScript: () => Promise.resolve(undefined),
+    executeJavaScript: (code) => {
+      execs.push(code);
+      return Promise.resolve(undefined);
+    },
     openDevTools: () => undefined,
     sendEnvelopeToRenderer: (json) => sent.push(json),
     onRendererEnvelope: (cb) => {
@@ -35,6 +40,7 @@ const makeFakeNative = (): {
   return {
     native,
     sent,
+    execs,
     fireRenderer: (json) => onEnvelope?.(json),
     fireDidFinishLoad: () => onLoad?.(),
   };
@@ -51,6 +57,35 @@ const reset = (): void => {
 
 beforeEach(reset);
 afterEach(reset);
+
+describe('WebContents.insertCSS / removeInsertedCSS', () => {
+  test('insertCSS injects the css and resolves to a key', async () => {
+    const { native, execs } = makeFakeNative();
+    const key = await new WebContents(native).insertCSS('body { color: red; }');
+    expect(typeof key).toBe('string');
+    expect(execs).toHaveLength(1);
+    expect(execs[0]).toContain('body { color: red; }');
+    expect(execs[0]).toContain(key);
+  });
+
+  test('insertCSS returns a distinct key per call', async () => {
+    const { native } = makeFakeNative();
+    const wc = new WebContents(native);
+    const a = await wc.insertCSS('a {}');
+    const b = await wc.insertCSS('b {}');
+    expect(a).not.toBe(b);
+  });
+
+  test('removeInsertedCSS runs a script referencing the key', async () => {
+    const { native, execs } = makeFakeNative();
+    const wc = new WebContents(native);
+    const key = await wc.insertCSS('a {}');
+    await wc.removeInsertedCSS(key);
+    expect(execs).toHaveLength(2);
+    expect(execs[1]).toContain(key);
+    expect(execs[1]).toContain('remove');
+  });
+});
 
 describe('WebContents.send', () => {
   test('sends a send envelope to the renderer', () => {
