@@ -89,6 +89,10 @@ export const WEBKITGTK_FFI_SYMBOLS = {
     args: [FFIType.pointer],
     returns: FFIType.i32,
   },
+  webkit_web_view_set_zoom_level: {
+    args: [FFIType.pointer, FFIType.f64],
+    returns: FFIType.void,
+  },
   webkit_web_view_evaluate_javascript: {
     args: [
       FFIType.pointer,

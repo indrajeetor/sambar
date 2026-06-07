@@ -163,6 +163,11 @@ class LinuxWebContents implements NativeWebContents {
     return webkit.symbols.webkit_web_view_can_go_forward(this.#view) !== 0;
   }
 
+  setZoomFactor(factor: number): void {
+    const webkit = loadWebKitGtkFFI();
+    webkit.symbols.webkit_web_view_set_zoom_level(this.#view, factor);
+  }
+
   /**
    * Evaluate `code` in the PAGE world (world_name = NULL) and resolve to its
    * completion value. The result returns out-of-band through the page-world

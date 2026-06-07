@@ -49,6 +49,7 @@ export class WebContents extends EventEmitter {
   readonly id: number;
   readonly #native: NativeWebContents;
   #cssCounter = 0;
+  #zoomFactor = 1;
 
   constructor(native: NativeWebContents) {
     super();
@@ -129,6 +130,17 @@ export class WebContents extends EventEmitter {
   /** Remove a stylesheet previously added with {@link insertCSS}. */
   async removeInsertedCSS(key: string): Promise<void> {
     await this.#native.executeJavaScript(buildRemoveCssScript(key));
+  }
+
+  /** Set the page zoom factor (`1` = 100%) natively. */
+  setZoomFactor(factor: number): void {
+    this.#zoomFactor = factor;
+    this.#native.setZoomFactor(factor);
+  }
+
+  /** The current page zoom factor. */
+  getZoomFactor(): number {
+    return this.#zoomFactor;
   }
 
   /** Open the developer tools (web inspector) for this view. Best-effort. */

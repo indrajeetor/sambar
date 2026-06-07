@@ -20,6 +20,7 @@ import { buildExecWrapper } from '../../ipc/exec-wrapper';
 import { getContentWorld, pageWorld } from './cocoa-content-world';
 import { nsString, nsStringToString } from './cocoa-foundation';
 import {
+  msgSendF64,
   msgSendI64,
   msgSendInitWithContentRect,
   msgSendInitWithFrameConfig,
@@ -293,6 +294,10 @@ class MacOSWebContents implements NativeWebContents {
     } catch (error) {
       log.warn('openDevTools failed (private inspector SPI unavailable)', error);
     }
+  }
+
+  setZoomFactor(factor: number): void {
+    msgSendF64(this.#webview, cocoa().selectors.get('setPageZoom:'), factor);
   }
 
   sendEnvelopeToRenderer(envelopeJson: string): void {

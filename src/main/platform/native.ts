@@ -63,6 +63,8 @@ export interface NativeWebContents {
   executeJavaScript(code: string): Promise<unknown>;
   /** Open the native web inspector (devtools) for this view. Best-effort. */
   openDevTools(): void;
+  /** Set the page zoom factor (`1` = 100%). */
+  setZoomFactor(factor: number): void;
   /** Deliver a raw IPC envelope (JSON) to the renderer's preload bridge. */
   sendEnvelopeToRenderer(envelopeJson: string): void;
   /** Register a callback for raw IPC envelopes (JSON) posted by the renderer. */

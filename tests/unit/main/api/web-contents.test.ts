@@ -8,11 +8,13 @@ const makeFakeNative = (): {
   native: NativeWebContents;
   sent: string[];
   execs: string[];
+  zooms: number[];
   fireRenderer: (json: string) => void;
   fireDidFinishLoad: () => void;
 } => {
   const sent: string[] = [];
   const execs: string[] = [];
+  const zooms: number[] = [];
   let onEnvelope: ((json: string) => void) | undefined;
   let onLoad: (() => void) | undefined;
   const native: NativeWebContents = {
@@ -29,6 +31,7 @@ const makeFakeNative = (): {
       return Promise.resolve(undefined);
     },
     openDevTools: () => undefined,
+    setZoomFactor: (factor) => zooms.push(factor),
     sendEnvelopeToRenderer: (json) => sent.push(json),
     onRendererEnvelope: (cb) => {
       onEnvelope = cb;
@@ -41,6 +44,7 @@ const makeFakeNative = (): {
     native,
     sent,
     execs,
+    zooms,
     fireRenderer: (json) => onEnvelope?.(json),
     fireDidFinishLoad: () => onLoad?.(),
   };
@@ -84,6 +88,20 @@ describe('WebContents.insertCSS / removeInsertedCSS', () => {
     expect(execs).toHaveLength(2);
     expect(execs[1]).toContain(key);
     expect(execs[1]).toContain('remove');
+  });
+});
+
+describe('WebContents.setZoomFactor / getZoomFactor', () => {
+  test('defaults to 1', () => {
+    expect(new WebContents(makeFakeNative().native).getZoomFactor()).toBe(1);
+  });
+
+  test('setZoomFactor applies natively and updates getZoomFactor', () => {
+    const { native, zooms } = makeFakeNative();
+    const wc = new WebContents(native);
+    wc.setZoomFactor(1.5);
+    expect(zooms).toEqual([1.5]);
+    expect(wc.getZoomFactor()).toBe(1.5);
   });
 });
 
@@ -218,6 +236,7 @@ describe('WebContents navigation', () => {
       canGoForward: () => false,
       executeJavaScript: () => Promise.resolve(undefined),
       openDevTools: () => undefined,
+      setZoomFactor: () => undefined,
       sendEnvelopeToRenderer: () => undefined,
       onRendererEnvelope: () => undefined,
       onDidFinishLoad: () => undefined,
