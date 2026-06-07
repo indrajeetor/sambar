@@ -17,6 +17,7 @@ const deps = (overrides: Partial<EnvironmentDeps> = {}): EnvironmentDeps => ({
   readFile: (path) =>
     path === '/proj/package.json' ? JSON.stringify({ name: 'demo', version: '4.2.0' }) : undefined,
   exit: () => undefined,
+  relaunch: () => undefined,
   ...overrides,
 });
 
@@ -97,5 +98,16 @@ describe('buildAppEnvironment — passthrough', () => {
     expect(env.temp).toBe('/tmp');
     env.exit(3);
     expect(exited).toBe(3);
+  });
+
+  test('carries the relaunch hook through', () => {
+    const calls: Array<[string, string[]]> = [];
+    const env = build({
+      relaunch: (execPath, args) => {
+        calls.push([execPath, args]);
+      },
+    });
+    env.relaunch('/bin/app', ['--flag']);
+    expect(calls).toEqual([['/bin/app', ['--flag']]]);
   });
 });

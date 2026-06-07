@@ -1,9 +1,12 @@
 import { EventEmitter } from 'node:events';
+import { join } from 'node:path';
 import { makeCancelableEvent } from '../../common/cancelable-event';
 import { type AppEnvironment, defaultAppEnvironment } from './app-environment';
 import { localeCountryCode } from './app-locale';
 import { resolveAppName, resolveAppVersion } from './app-metadata';
 import { type AppPathName, resolveAppPath } from './app-paths';
+import { createLockBackend } from './single-instance-backend';
+import { SingleInstanceManager } from './single-instance';
 
 /**
  * Application lifecycle controller — the drop-in equivalent of Electron's `app`.
@@ -25,6 +28,7 @@ export class App extends EventEmitter {
   #startHook: (() => void) | undefined;
   #env: AppEnvironment | undefined;
   #nameOverride: string | undefined;
+  #singleInstance: SingleInstanceManager | undefined;
   readonly #pathOverrides = new Map<AppPathName, string>();
 
   /** The resolved host environment, built lazily on first use. */
@@ -51,6 +55,7 @@ export class App extends EventEmitter {
     this.#env = undefined;
     this.#quitting = false;
     this.#nameOverride = undefined;
+    this.#singleInstance = undefined;
     this.#pathOverrides.clear();
     for (const event of [
       'window-all-closed',
@@ -190,6 +195,55 @@ export class App extends EventEmitter {
   /** Exit immediately with `exitCode` (default 0), skipping the quit events. */
   exit(exitCode = 0): void {
     this.#environment().exit(exitCode);
+  }
+
+  /** Relaunch the app when the current instance exits (Electron's `relaunch`). */
+  relaunch(options?: { args?: string[]; execPath?: string }): void {
+    const env = this.#environment();
+    const execPath = options?.execPath ?? env.execPath;
+    const args = options?.args ?? process.argv.slice(1);
+    env.relaunch(execPath, args);
+  }
+
+  /** The single-instance lock manager, created lazily over the real backend. */
+  #singleInstanceManager(): SingleInstanceManager {
+    this.#singleInstance ??= new SingleInstanceManager(createLockBackend(), {
+      lockPath: join(this.getPath('userData'), 'SingletonLock'),
+      socketPath: join(this.getPath('userData'), 'SingletonSocket'),
+      pid: process.pid,
+    });
+    return this.#singleInstance;
+  }
+
+  /**
+   * Replace the single-instance manager with a fake.
+   * @internal Test-only seam.
+   */
+  setSingleInstanceForTesting(manager: SingleInstanceManager): void {
+    this.#singleInstance = manager;
+  }
+
+  /**
+   * Acquire the single-instance lock. Returns `true` if this is the primary
+   * instance; `false` if another instance already holds it (in which case it has
+   * been handed this process's argv/cwd via its `second-instance` event, and the
+   * caller should quit).
+   */
+  requestSingleInstanceLock(additionalData: unknown = undefined): boolean {
+    const payload = { argv: [...process.argv], cwd: process.cwd(), additionalData };
+    return this.#singleInstanceManager().request(payload, (p) => {
+      this.emit('second-instance', makeCancelableEvent(), p.argv, p.cwd, p.additionalData);
+    });
+  }
+
+  /** Whether this process holds the single-instance lock. */
+  hasSingleInstanceLock(): boolean {
+    return this.#singleInstanceManager().has();
+  }
+
+  /** Release the single-instance lock held by this process. */
+  releaseSingleInstanceLock(): void {
+    this.#singleInstanceManager().release();
   }
 
   /**

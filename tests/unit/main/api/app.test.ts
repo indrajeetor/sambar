@@ -6,6 +6,11 @@ import {
   buildAppEnvironment,
   type EnvironmentDeps,
 } from '../../../../src/main/api/app-environment';
+import {
+  encodePayload,
+  type LockBackend,
+  SingleInstanceManager,
+} from '../../../../src/main/api/single-instance';
 
 const fakeEnv = (overrides: Partial<EnvironmentDeps> = {}): AppEnvironment =>
   buildAppEnvironment({
@@ -22,6 +27,7 @@ const fakeEnv = (overrides: Partial<EnvironmentDeps> = {}): AppEnvironment =>
         ? JSON.stringify({ productName: 'Demo App', name: 'demo', version: '4.2.0' })
         : undefined,
     exit: () => undefined,
+    relaunch: () => undefined,
     ...overrides,
   });
 
@@ -292,6 +298,109 @@ describe('App.isPackaged', () => {
     expect(appWith({ execPath: '/Applications/Demo.app/Contents/MacOS/Demo' }).isPackaged).toBe(
       true,
     );
+  });
+});
+
+describe('App.relaunch', () => {
+  test('relaunches with the env execPath and current args by default', () => {
+    const calls: Array<[string, string[]]> = [];
+    const a = new App();
+    a.setEnvironmentForTesting(
+      fakeEnv({
+        execPath: '/bin/myapp',
+        relaunch: (execPath, args) => {
+          calls.push([execPath, args]);
+        },
+      }),
+    );
+    a.relaunch();
+    expect(calls).toEqual([['/bin/myapp', process.argv.slice(1)]]);
+  });
+
+  test('honors execPath and args overrides', () => {
+    const calls: Array<[string, string[]]> = [];
+    const a = new App();
+    a.setEnvironmentForTesting(
+      fakeEnv({
+        relaunch: (execPath, args) => {
+          calls.push([execPath, args]);
+        },
+      }),
+    );
+    a.relaunch({ execPath: '/custom', args: ['--restart'] });
+    expect(calls).toEqual([['/custom', ['--restart']]]);
+  });
+});
+
+describe('App single-instance lock', () => {
+  /** A real manager over a fake backend; exposes the captured server callback. */
+  const managerWith = (
+    opts: { acquire?: boolean[]; existingPid?: number; alive?: boolean } = {},
+  ): { manager: SingleInstanceManager; deliver: (json: string) => void; stops: () => number } => {
+    const acquireQueue = [...(opts.acquire ?? [true])];
+    let onMessage: ((json: string) => void) | undefined;
+    let stops = 0;
+    const backend: LockBackend = {
+      tryCreateLock: () => acquireQueue.shift() ?? false,
+      readLockPid: () => opts.existingPid,
+      isAlive: () => opts.alive ?? false,
+      clearLock: () => undefined,
+      startServer: (_path, cb) => {
+        onMessage = cb;
+      },
+      notify: () => undefined,
+      stop: () => {
+        stops += 1;
+      },
+    };
+    return {
+      manager: new SingleInstanceManager(backend, {
+        lockPath: '/l',
+        socketPath: '/s',
+        pid: 1,
+      }),
+      deliver: (json) => onMessage?.(json),
+      stops: () => stops,
+    };
+  };
+
+  test('requestSingleInstanceLock returns true for the primary', () => {
+    const a = new App();
+    a.setSingleInstanceForTesting(managerWith({ acquire: [true] }).manager);
+    expect(a.requestSingleInstanceLock()).toBe(true);
+    expect(a.hasSingleInstanceLock()).toBe(true);
+  });
+
+  test('requestSingleInstanceLock returns false for a secondary', () => {
+    const a = new App();
+    a.setSingleInstanceForTesting(
+      managerWith({ acquire: [false], existingPid: 999, alive: true }).manager,
+    );
+    expect(a.requestSingleInstanceLock()).toBe(false);
+    expect(a.hasSingleInstanceLock()).toBe(false);
+  });
+
+  test('emits second-instance with argv/cwd/data when a peer connects', () => {
+    const a = new App();
+    const fixture = managerWith({ acquire: [true] });
+    a.setSingleInstanceForTesting(fixture.manager);
+    let captured: { argv: string[]; cwd: string; data: unknown } | undefined;
+    a.on('second-instance', (_event: unknown, argv: string[], cwd: string, data: unknown) => {
+      captured = { argv, cwd, data };
+    });
+    a.requestSingleInstanceLock();
+    fixture.deliver(encodePayload({ argv: ['p', 'q'], cwd: '/peer', additionalData: { z: 1 } }));
+    expect(captured).toEqual({ argv: ['p', 'q'], cwd: '/peer', data: { z: 1 } });
+  });
+
+  test('releaseSingleInstanceLock releases the lock', () => {
+    const a = new App();
+    const fixture = managerWith({ acquire: [true] });
+    a.setSingleInstanceForTesting(fixture.manager);
+    a.requestSingleInstanceLock();
+    a.releaseSingleInstanceLock();
+    expect(fixture.stops()).toBe(1);
+    expect(a.hasSingleInstanceLock()).toBe(false);
   });
 });
 

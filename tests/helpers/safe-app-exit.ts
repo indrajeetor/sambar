@@ -34,6 +34,7 @@ export const installSafeAppExit = (): void => {
       exit: (code) => {
         exits.push(code);
       },
+      relaunch: () => undefined,
     }),
   );
 };

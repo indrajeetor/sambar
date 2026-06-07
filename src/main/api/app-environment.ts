@@ -26,6 +26,8 @@ export type EnvironmentDeps = {
   readonly locale: string;
   readonly readFile: ManifestReader;
   readonly exit: (code: number) => void;
+  /** Spawn a detached copy of the app on exit (backs `app.relaunch`). */
+  readonly relaunch: (execPath: string, args: string[]) => void;
 };
 
 /** Resolved environment consumed by the `app` module. */
@@ -43,6 +45,7 @@ export type AppEnvironment = {
   readonly preferredLanguages: string[];
   readonly isPackaged: boolean;
   readonly exit: (code: number) => void;
+  readonly relaunch: (execPath: string, args: string[]) => void;
 };
 
 /** Matches the dev-runner executables (`bun`, `bun-canary`, `node`). */
@@ -79,6 +82,7 @@ export const buildAppEnvironment = (deps: EnvironmentDeps): AppEnvironment => {
     preferredLanguages: computePreferredLanguages(deps.env, locale),
     isPackaged: computeIsPackaged(deps.execPath),
     exit: deps.exit,
+    relaunch: deps.relaunch,
   };
 };
 
@@ -104,4 +108,14 @@ export const defaultAppEnvironment = (): AppEnvironment =>
     locale: new Intl.DateTimeFormat().resolvedOptions().locale,
     readFile: safeRead,
     exit: (code) => process.exit(code),
+    // Spawn a detached copy as this process exits (Electron's relaunch-on-exit).
+    relaunch: (execPath, args) => {
+      process.once('exit', () => {
+        try {
+          Bun.spawn({ cmd: [execPath, ...args], stdio: ['ignore', 'ignore', 'ignore'] }).unref();
+        } catch {
+          // Best-effort: a failed relaunch must not crash the exiting process.
+        }
+      });
+    },
   });
