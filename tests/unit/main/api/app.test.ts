@@ -1,6 +1,36 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, test } from 'bun:test';
 import { App, app } from '../../../../src/main/api/app';
+import {
+  type AppEnvironment,
+  buildAppEnvironment,
+  type EnvironmentDeps,
+} from '../../../../src/main/api/app-environment';
+
+const fakeEnv = (overrides: Partial<EnvironmentDeps> = {}): AppEnvironment =>
+  buildAppEnvironment({
+    platform: 'macos',
+    home: '/Users/ada',
+    temp: '/tmp',
+    execPath: '/opt/homebrew/bin/bun',
+    mainScript: '/proj/src/main.ts',
+    cwd: '/proj',
+    env: {},
+    locale: 'en-US',
+    readFile: (path) =>
+      path === '/proj/package.json'
+        ? JSON.stringify({ productName: 'Demo App', name: 'demo', version: '4.2.0' })
+        : undefined,
+    exit: () => undefined,
+    ...overrides,
+  });
+
+/** A fresh App with an injected fake environment. */
+const appWith = (overrides: Partial<EnvironmentDeps> = {}): App => {
+  const a = new App();
+  a.setEnvironmentForTesting(fakeEnv(overrides));
+  return a;
+};
 
 describe('App singleton', () => {
   test('is an instance of App', () => {
@@ -122,5 +152,110 @@ describe('App.quit', () => {
     a.on('quit', () => order.push('quit'));
     a.quit();
     expect(order).toEqual(['before-quit', 'will-quit', 'quit']);
+  });
+});
+
+describe('App name & version', () => {
+  test('getName prefers productName from the manifest', () => {
+    expect(appWith().getName()).toBe('Demo App');
+  });
+
+  test('setName overrides getName and the name accessor mirrors it', () => {
+    const a = appWith();
+    a.setName('Renamed');
+    expect(a.getName()).toBe('Renamed');
+    expect(a.name).toBe('Renamed');
+    a.name = 'Again';
+    expect(a.getName()).toBe('Again');
+  });
+
+  test('getVersion returns the manifest version', () => {
+    expect(appWith().getVersion()).toBe('4.2.0');
+  });
+});
+
+describe('App paths', () => {
+  test('getAppPath returns the resolved app root', () => {
+    expect(appWith().getAppPath()).toBe('/proj');
+  });
+
+  test('getPath(userData) is appData/<name> using the resolved name', () => {
+    expect(appWith().getPath('userData')).toBe('/Users/ada/Library/Application Support/Demo App');
+  });
+
+  test('getPath reflects a setName override in userData', () => {
+    const a = appWith();
+    a.setName('Renamed');
+    expect(a.getPath('userData')).toBe('/Users/ada/Library/Application Support/Renamed');
+  });
+
+  test('setPath overrides a specific path', () => {
+    const a = appWith();
+    a.setPath('userData', '/custom/data');
+    expect(a.getPath('userData')).toBe('/custom/data');
+  });
+});
+
+describe('App locale', () => {
+  test('getLocale returns the normalized locale', () => {
+    expect(appWith({ locale: 'en_US.UTF-8' }).getLocale()).toBe('en-US');
+  });
+
+  test('getSystemLocale matches getLocale', () => {
+    const a = appWith({ locale: 'fr-FR' });
+    expect(a.getSystemLocale()).toBe('fr-FR');
+  });
+
+  test('getLocaleCountryCode derives the region', () => {
+    expect(appWith({ locale: 'en-US' }).getLocaleCountryCode()).toBe('US');
+  });
+
+  test('getPreferredSystemLanguages reflects the environment', () => {
+    expect(appWith({ env: { LANGUAGE: 'fr_FR:en_US' } }).getPreferredSystemLanguages()).toEqual([
+      'fr-FR',
+      'en-US',
+    ]);
+  });
+});
+
+describe('App.isPackaged', () => {
+  test('is false under the dev runner', () => {
+    expect(appWith({ execPath: '/opt/homebrew/bin/bun' }).isPackaged).toBe(false);
+  });
+
+  test('is true inside a packaged bundle', () => {
+    expect(appWith({ execPath: '/Applications/Demo.app/Contents/MacOS/Demo' }).isPackaged).toBe(
+      true,
+    );
+  });
+});
+
+describe('App.exit', () => {
+  test('calls the environment exit with the given code', () => {
+    let code = -1;
+    const a = new App();
+    a.setEnvironmentForTesting(
+      fakeEnv({
+        exit: (c) => {
+          code = c;
+        },
+      }),
+    );
+    a.exit(7);
+    expect(code).toBe(7);
+  });
+
+  test('defaults the exit code to 0', () => {
+    let code = -1;
+    const a = new App();
+    a.setEnvironmentForTesting(
+      fakeEnv({
+        exit: (c) => {
+          code = c;
+        },
+      }),
+    );
+    a.exit();
+    expect(code).toBe(0);
   });
 });

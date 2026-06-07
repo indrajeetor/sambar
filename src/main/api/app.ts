@@ -1,4 +1,8 @@
 import { EventEmitter } from 'node:events';
+import { type AppEnvironment, defaultAppEnvironment } from './app-environment';
+import { localeCountryCode } from './app-locale';
+import { resolveAppName, resolveAppVersion } from './app-metadata';
+import { type AppPathName, resolveAppPath } from './app-paths';
 
 /**
  * Application lifecycle controller — the drop-in equivalent of Electron's `app`.
@@ -8,13 +12,32 @@ import { EventEmitter } from 'node:events';
  * contract (D023). Events: `ready`, `before-quit`, `will-quit`,
  * `window-all-closed`, `quit`.
  *
- * The class is kept free of any native dependency so it unit-tests without FFI:
- * the native bootstrap is supplied as an injectable hook ({@link setStartHook})
- * by the runtime barrel, not imported here.
+ * The class is kept free of any native (FFI) dependency so it unit-tests without
+ * FFI: the native bootstrap is supplied as an injectable hook
+ * ({@link setStartHook}) by the runtime barrel, and the host facts behind the
+ * metadata/path/locale methods come from an injectable {@link AppEnvironment}
+ * (the live one is built lazily from `os`/`process`/`fs`/`Intl`).
  */
 export class App extends EventEmitter {
   #ready = false;
   #startHook: (() => void) | undefined;
+  #env: AppEnvironment | undefined;
+  #nameOverride: string | undefined;
+  readonly #pathOverrides = new Map<AppPathName, string>();
+
+  /** The resolved host environment, built lazily on first use. */
+  #environment(): AppEnvironment {
+    this.#env ??= defaultAppEnvironment();
+    return this.#env;
+  }
+
+  /**
+   * Replace the resolved environment with a fake.
+   * @internal Test-only seam; production builds the real environment lazily.
+   */
+  setEnvironmentForTesting(env: AppEnvironment): void {
+    this.#env = env;
+  }
 
   /** Whether the `ready` event has already fired. */
   get isReady(): boolean {
@@ -56,6 +79,93 @@ export class App extends EventEmitter {
    */
   setStartHook(hook: () => void): void {
     this.#startHook = hook;
+  }
+
+  /** The application name: `setName` override, else `productName`/`name` from the app's `package.json`. */
+  getName(): string {
+    return resolveAppName(this.#environment().manifest, this.#nameOverride);
+  }
+
+  /** Override the application name (also changes the `userData` directory name). */
+  setName(name: string): void {
+    this.#nameOverride = name;
+  }
+
+  /** Accessor form of {@link getName}/{@link setName}. */
+  get name(): string {
+    return this.getName();
+  }
+
+  set name(value: string) {
+    this.setName(value);
+  }
+
+  /** The application version from the app's `package.json`. */
+  getVersion(): string {
+    return resolveAppVersion(this.#environment().manifest);
+  }
+
+  /** The application root directory (the nearest `package.json`, or cwd). */
+  getAppPath(): string {
+    return this.#environment().appPath;
+  }
+
+  /** Resolve a special directory by name (Electron's `app.getPath`). */
+  getPath(name: AppPathName): string {
+    const override = this.#pathOverrides.get(name);
+    if (override !== undefined) {
+      return override;
+    }
+    const env = this.#environment();
+    return resolveAppPath(name, {
+      platform: env.platform,
+      home: env.home,
+      temp: env.temp,
+      appName: this.getName(),
+      execPath: env.execPath,
+      appPath: env.appPath,
+      env: env.env,
+    });
+  }
+
+  /** Override the path returned by {@link getPath} for a given name. */
+  setPath(name: AppPathName, path: string): void {
+    this.#pathOverrides.set(name, path);
+  }
+
+  /** Override the directory used for app logs (`getPath('logs')`). */
+  setAppLogsPath(path?: string): void {
+    this.#pathOverrides.set('logs', path ?? this.getPath('logs'));
+  }
+
+  /** The current application locale as a normalized BCP-47 tag. */
+  getLocale(): string {
+    return this.#environment().locale;
+  }
+
+  /** The system locale; for Sambar this matches {@link getLocale}. */
+  getSystemLocale(): string {
+    return this.#environment().locale;
+  }
+
+  /** The two-letter country/region code of the current locale, or `''`. */
+  getLocaleCountryCode(): string {
+    return localeCountryCode(this.#environment().locale);
+  }
+
+  /** The user's preferred languages, most-preferred first. */
+  getPreferredSystemLanguages(): string[] {
+    return this.#environment().preferredLanguages;
+  }
+
+  /** Whether the app is running from a packaged build (vs. the dev runner). */
+  get isPackaged(): boolean {
+    return this.#environment().isPackaged;
+  }
+
+  /** Exit immediately with `exitCode` (default 0), skipping the quit events. */
+  exit(exitCode = 0): void {
+    this.#environment().exit(exitCode);
   }
 
   /**
