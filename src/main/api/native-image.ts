@@ -22,11 +22,10 @@ import { gdkNativeImageBackend } from '../platform/linux/gdk-native-image';
  * directly. No struct ever crosses FFI.
  *
  * V1 surface: `createFromPath`, `createFromBuffer` (PNG/JPEG bytes),
- * `createEmpty`; instance `getSize`, `isEmpty`, `toPNG`, `toDataURL`.
- * DEFERRED (documented, not stubbed as fake no-ops): `resize`, `crop`,
- * `toJPEG`, `getScaleFactors`/`getAspectRatio`, template-image flags
- * (`setTemplateImage`/`isTemplateImage`), and the `{ scaleFactor }` /
- * `data:`-URL ingestion options of the factory functions.
+ * `createFromDataURL`, `createEmpty`; instance `getSize`, `isEmpty`, `toPNG`,
+ * `toDataURL`. DEFERRED (documented, not stubbed as fake no-ops): `resize`,
+ * `crop`, `toJPEG`, `getScaleFactors`/`getAspectRatio`, template-image flags
+ * (`setTemplateImage`/`isTemplateImage`), and the `{ scaleFactor }` option.
  */
 
 /** An opaque native image handle, carried as a `bigint` (macOS) or `Pointer` bigint (Linux). */
@@ -135,6 +134,19 @@ export const nativeImage = {
   createFromBuffer(buffer: Uint8Array): NativeImage {
     const b = getBackend();
     return new NativeImage(b, b.decode(buffer));
+  },
+  /** Decode a `data:` URL (base64 or URL-encoded). A malformed URL yields an empty image. */
+  createFromDataURL(dataURL: string): NativeImage {
+    const comma = dataURL.indexOf(',');
+    if (comma === -1 || !dataURL.startsWith('data:')) {
+      return this.createEmpty();
+    }
+    const meta = dataURL.slice('data:'.length, comma);
+    const payload = dataURL.slice(comma + 1);
+    const bytes = meta.includes(';base64')
+      ? new Uint8Array(Buffer.from(payload, 'base64'))
+      : new TextEncoder().encode(decodeURIComponent(payload));
+    return this.createFromBuffer(bytes);
   },
   /** Create an empty image (no native decode). */
   createEmpty(): NativeImage {

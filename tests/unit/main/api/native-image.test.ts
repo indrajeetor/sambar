@@ -140,3 +140,24 @@ describe('NativeImage type', () => {
     expect(typeof image.toDataURL).toBe('function');
   });
 });
+
+describe('nativeImage.createFromDataURL', () => {
+  test('base64-decodes the payload and decodes the bytes via the backend', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 1n, width: 1, height: 1, empty: false }, new Uint8Array([1])),
+    );
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const base64 = Buffer.from(bytes).toString('base64');
+    nativeImage.createFromDataURL(`data:image/png;base64,${base64}`);
+    expect(decodeCalls).toHaveLength(1);
+    expect(decodeCalls[0]?.source).toEqual(bytes);
+  });
+
+  test('a malformed data URL yields an empty image without a backend decode', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 1n, width: 1, height: 1, empty: false }, new Uint8Array([1])),
+    );
+    expect(nativeImage.createFromDataURL('not-a-data-url').isEmpty()).toBe(true);
+    expect(decodeCalls).toHaveLength(0);
+  });
+});
