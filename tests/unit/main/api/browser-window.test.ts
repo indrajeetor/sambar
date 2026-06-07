@@ -17,7 +17,9 @@ import {
   BrowserWindow,
   resetWindowRegistryForTesting,
 } from '../../../../src/main/api/browser-window';
+import { app } from '../../../../src/main/api/app';
 import { resetWebContentsIdsForTesting } from '../../../../src/main/api/web-contents';
+import { appExitCodes, installSafeAppExit } from '../../../helpers/safe-app-exit';
 
 type FakeWindow = NativeWindow & {
   fireClosed: () => void;
@@ -157,6 +159,7 @@ beforeEach(() => {
   resetWindowRegistryForTesting();
   resetWebContentsIdsForTesting();
   resetBootstrapForTesting();
+  installSafeAppExit();
   const fake = makeFakeApp();
   created = fake.created;
   windows = fake.windows;
@@ -165,6 +168,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setNativeAppForTesting(undefined);
+  app.resetForTesting();
 });
 
 describe('BrowserWindow construction', () => {
@@ -387,5 +391,81 @@ describe('BrowserWindow lifecycle events', () => {
     win.close();
     windows[0]?.fireCloseRequest();
     expect(windows[0]?.teardownCount()).toBe(1);
+  });
+});
+
+describe('App-level window events', () => {
+  test('constructing a window emits browser-window-created with the window', () => {
+    let received: BrowserWindow | undefined;
+    app.on('browser-window-created', (_event: unknown, win: BrowserWindow) => {
+      received = win;
+    });
+    const win = new BrowserWindow();
+    expect(received).toBe(win);
+  });
+
+  test('constructing a window emits web-contents-created with the web contents', () => {
+    let received: unknown;
+    app.on('web-contents-created', (_event: unknown, contents: unknown) => {
+      received = contents;
+    });
+    const win = new BrowserWindow();
+    expect(received).toBe(win.webContents);
+  });
+
+  test('native focus re-emits app browser-window-focus with the window', () => {
+    const win = new BrowserWindow();
+    let focused: BrowserWindow | undefined;
+    app.on('browser-window-focus', (_event: unknown, w: BrowserWindow) => {
+      focused = w;
+    });
+    windows[0]?.fireEvent('focus');
+    expect(focused).toBe(win);
+  });
+
+  test('native blur re-emits app browser-window-blur with the window', () => {
+    const win = new BrowserWindow();
+    let blurred: BrowserWindow | undefined;
+    app.on('browser-window-blur', (_event: unknown, w: BrowserWindow) => {
+      blurred = w;
+    });
+    windows[0]?.fireEvent('blur');
+    expect(blurred).toBe(win);
+  });
+
+  test('closing the last window emits app window-all-closed', () => {
+    const win = new BrowserWindow();
+    let fired = 0;
+    app.on('window-all-closed', () => {
+      fired += 1;
+    });
+    win.close();
+    expect(fired).toBe(1);
+  });
+
+  test('window-all-closed fires only once the final window closes', () => {
+    const a = new BrowserWindow();
+    const b = new BrowserWindow();
+    let fired = 0;
+    app.on('window-all-closed', () => {
+      fired += 1;
+    });
+    a.close();
+    expect(fired).toBe(0);
+    b.close();
+    expect(fired).toBe(1);
+  });
+
+  test('closing the last window with no listener quits the app', () => {
+    const win = new BrowserWindow();
+    win.close();
+    expect(appExitCodes()).toEqual([0]);
+  });
+
+  test('a window-all-closed listener suppresses the default quit', () => {
+    const win = new BrowserWindow();
+    app.on('window-all-closed', () => undefined);
+    win.close();
+    expect(appExitCodes()).toEqual([]);
   });
 });

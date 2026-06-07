@@ -3,6 +3,7 @@ import { currentPlatform } from '../../../src/common/platform';
 import { BrowserWindow } from '../../../src/main/api/browser-window';
 import { resetBootstrapForTesting } from '../../../src/main/bootstrap';
 import { nativeApp, setNativeAppForTesting } from '../../../src/main/native-app';
+import { installSafeAppExit } from '../../helpers/safe-app-exit';
 
 /**
  * BrowserWindow lifecycle events + the close-path teardown on a REAL NSWindow.
@@ -25,6 +26,9 @@ if (currentPlatform() === 'macos') {
     beforeAll(() => {
       setNativeAppForTesting(undefined);
       resetBootstrapForTesting();
+      // Closing the last window triggers the window-all-closed default quit;
+      // keep it from terminating the shared test process.
+      installSafeAppExit();
     });
 
     afterAll(() => {

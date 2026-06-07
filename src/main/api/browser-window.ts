@@ -1,11 +1,13 @@
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { makeCancelableEvent } from '../../common/cancelable-event';
 import { InvalidArgumentError } from '../../common/errors';
 import type { NativeWindow, WindowEventType } from '../platform/native';
 import { ensureNativeStarted } from '../bootstrap';
 import { nativeApp } from '../native-app';
 import type { Rect } from '../platform/native';
+import { app } from './app';
 import { WebContents } from './web-contents';
 
 /**
@@ -133,11 +135,13 @@ export class BrowserWindow extends EventEmitter {
       ...(preloadScript !== undefined ? { preloadScript } : {}),
     });
     this.webContents = new WebContents(this.#native.webContents);
+    app.emit('web-contents-created', makeCancelableEvent(), this.webContents);
 
     this.#native.onClosed(() => {
       this.#destroyed = true;
       registry.delete(this.id);
       this.emit('closed');
+      this.#emitWindowAllClosedIfLast();
     });
     // Preventable close: re-emit Electron's `close` with an event a listener may
     // veto via preventDefault(). Returning true tells the backend to stay open.
@@ -149,9 +153,29 @@ export class BrowserWindow extends EventEmitter {
     for (const type of WINDOW_EVENT_TYPES) {
       this.#native.onWindowEvent(type, () => {
         this.emit(type);
+        if (type === 'focus') {
+          app.emit('browser-window-focus', makeCancelableEvent(), this);
+        } else if (type === 'blur') {
+          app.emit('browser-window-blur', makeCancelableEvent(), this);
+        }
       });
     }
     registry.set(this.id, this);
+    app.emit('browser-window-created', makeCancelableEvent(), this);
+  }
+
+  /**
+   * When the last window closes, emit `app`'s `window-all-closed`. Replicating
+   * Electron's default: if no listener handles it, quit the app (a subscriber
+   * takes over the decision by listening).
+   */
+  #emitWindowAllClosedIfLast(): void {
+    if (registry.size > 0) {
+      return;
+    }
+    if (!app.emit('window-all-closed')) {
+      app.quit();
+    }
   }
 
   /** Navigate the window's web contents to a URL. */

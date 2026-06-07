@@ -41,6 +41,28 @@ export class App extends EventEmitter {
     this.#env = env;
   }
 
+  /**
+   * Reset mutable state and app-level window-event listeners back to defaults.
+   * Lifecycle listeners (`before-quit`/`will-quit`/`quit`) are left intact so the
+   * native bootstrap wiring survives.
+   * @internal Test-only seam for suites that exercise the shared `app` singleton.
+   */
+  resetForTesting(): void {
+    this.#env = undefined;
+    this.#quitting = false;
+    this.#nameOverride = undefined;
+    this.#pathOverrides.clear();
+    for (const event of [
+      'window-all-closed',
+      'browser-window-created',
+      'browser-window-focus',
+      'browser-window-blur',
+      'web-contents-created',
+    ]) {
+      this.removeAllListeners(event);
+    }
+  }
+
   /** Whether the `ready` event has already fired. */
   get isReady(): boolean {
     return this.#ready;

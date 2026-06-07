@@ -3,6 +3,7 @@ import { currentPlatform } from '../../../src/common/platform';
 import { BrowserWindow } from '../../../src/main/api/browser-window';
 import { resetBootstrapForTesting } from '../../../src/main/bootstrap';
 import { nativeApp, setNativeAppForTesting } from '../../../src/main/native-app';
+import { installSafeAppExit } from '../../helpers/safe-app-exit';
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -12,6 +13,9 @@ if (currentPlatform() === 'macos') {
       // Ensure the real native backend is used (other suites may have injected a fake).
       setNativeAppForTesting(undefined);
       resetBootstrapForTesting();
+      // Closing the last window triggers the window-all-closed default quit;
+      // keep it from terminating the shared test process.
+      installSafeAppExit();
     });
 
     afterAll(() => {
