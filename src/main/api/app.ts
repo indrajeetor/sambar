@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { makeCancelableEvent } from '../../common/cancelable-event';
 import { type AppEnvironment, defaultAppEnvironment } from './app-environment';
 import { localeCountryCode } from './app-locale';
 import { resolveAppName, resolveAppVersion } from './app-metadata';
@@ -20,6 +21,7 @@ import { type AppPathName, resolveAppPath } from './app-paths';
  */
 export class App extends EventEmitter {
   #ready = false;
+  #quitting = false;
   #startHook: (() => void) | undefined;
   #env: AppEnvironment | undefined;
   #nameOverride: string | undefined;
@@ -169,13 +171,34 @@ export class App extends EventEmitter {
   }
 
   /**
-   * Begin shutting the app down: emit `before-quit` then `will-quit`, then
-   * `quit`. The native bootstrap listens for these to stop the run loop.
+   * Begin shutting the app down. Emits the cancelable `before-quit` then
+   * `will-quit` events (a listener may call `preventDefault()` on the passed
+   * event to abort the quit); if neither vetoes, emits `quit` with the exit code
+   * and exits the process. The native bootstrap listens for `will-quit` to stop
+   * the run loop before the process exits.
    */
-  quit(): void {
-    this.emit('before-quit');
-    this.emit('will-quit');
-    this.emit('quit');
+  quit(exitCode = 0): void {
+    if (this.#quitting) {
+      return;
+    }
+    this.#quitting = true;
+
+    const beforeQuit = makeCancelableEvent();
+    this.emit('before-quit', beforeQuit);
+    if (beforeQuit.defaultPrevented) {
+      this.#quitting = false;
+      return;
+    }
+
+    const willQuit = makeCancelableEvent();
+    this.emit('will-quit', willQuit);
+    if (willQuit.defaultPrevented) {
+      this.#quitting = false;
+      return;
+    }
+
+    this.emit('quit', exitCode);
+    this.#environment().exit(exitCode);
   }
 }
 

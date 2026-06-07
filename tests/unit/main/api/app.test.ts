@@ -144,14 +144,79 @@ describe('App event surface', () => {
 });
 
 describe('App.quit', () => {
-  test('emits before-quit, will-quit, then quit in order', () => {
+  /** An app whose env records exit codes instead of killing the process. */
+  const quittableApp = (): { app: App; exits: number[] } => {
+    const exits: number[] = [];
     const a = new App();
+    a.setEnvironmentForTesting(
+      fakeEnv({
+        exit: (code) => {
+          exits.push(code);
+        },
+      }),
+    );
+    return { app: a, exits };
+  };
+
+  test('emits before-quit, will-quit, then quit in order, then exits', () => {
+    const { app: a, exits } = quittableApp();
     const order: string[] = [];
     a.on('before-quit', () => order.push('before-quit'));
     a.on('will-quit', () => order.push('will-quit'));
     a.on('quit', () => order.push('quit'));
     a.quit();
     expect(order).toEqual(['before-quit', 'will-quit', 'quit']);
+    expect(exits).toEqual([0]);
+  });
+
+  test('before-quit preventDefault aborts the quit', () => {
+    const { app: a, exits } = quittableApp();
+    let willQuitFired = false;
+    a.on('before-quit', (event: { preventDefault(): void }) => event.preventDefault());
+    a.on('will-quit', () => {
+      willQuitFired = true;
+    });
+    a.quit();
+    expect(willQuitFired).toBe(false);
+    expect(exits).toEqual([]);
+  });
+
+  test('will-quit preventDefault aborts the quit before quit/exit', () => {
+    const { app: a, exits } = quittableApp();
+    let quitFired = false;
+    a.on('will-quit', (event: { preventDefault(): void }) => event.preventDefault());
+    a.on('quit', () => {
+      quitFired = true;
+    });
+    a.quit();
+    expect(quitFired).toBe(false);
+    expect(exits).toEqual([]);
+  });
+
+  test('emits quit with the exit code and exits with it', () => {
+    const { app: a, exits } = quittableApp();
+    let quitCode = -1;
+    a.on('quit', (code: number) => {
+      quitCode = code;
+    });
+    a.quit(5);
+    expect(quitCode).toBe(5);
+    expect(exits).toEqual([5]);
+  });
+
+  test('a prevented quit can be retried', () => {
+    const { app: a, exits } = quittableApp();
+    let prevent = true;
+    a.on('before-quit', (event: { preventDefault(): void }) => {
+      if (prevent) {
+        event.preventDefault();
+      }
+    });
+    a.quit();
+    expect(exits).toEqual([]);
+    prevent = false;
+    a.quit();
+    expect(exits).toEqual([0]);
   });
 });
 
