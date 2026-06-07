@@ -29,10 +29,24 @@ export type OpenDialogSpec = {
   readonly canChooseFiles: boolean;
   readonly canChooseDirectories: boolean;
   readonly allowsMultipleSelection: boolean;
+  /** Allowed file extensions (without dots); empty means any file. */
+  readonly extensions: ReadonlyArray<string>;
 };
 
 export type SaveDialogSpec = {
   readonly defaultName: string;
+  /** Allowed file extensions (without dots); empty means any file. */
+  readonly extensions: ReadonlyArray<string>;
+};
+
+/** `[NSArray]` of `NSString`s built incrementally (no varargs) from JS strings. */
+const nsArrayOfStrings = (strings: ReadonlyArray<string>): Handle => {
+  const rt = cocoa();
+  const array = rt.msgSend(rt.classes.get('NSMutableArray'), rt.selectors.get('array'));
+  for (const s of strings) {
+    msgSendPtr(array, rt.selectors.get('addObject:'), nsString(s));
+  }
+  return array;
 };
 
 /** Build (but do not run) an `NSAlert` for a message box. Returns its handle. */
@@ -69,6 +83,9 @@ export const buildOpenPanel = (spec: OpenDialogSpec): Handle => {
     rt.selectors.get('setAllowsMultipleSelection:'),
     spec.allowsMultipleSelection ? 1 : 0,
   );
+  if (spec.extensions.length > 0) {
+    msgSendPtr(panel, rt.selectors.get('setAllowedFileTypes:'), nsArrayOfStrings(spec.extensions));
+  }
   return panel;
 };
 
@@ -97,6 +114,9 @@ export const buildSavePanel = (spec: SaveDialogSpec): Handle => {
   const panel = rt.msgSend(rt.classes.get('NSSavePanel'), rt.selectors.get('savePanel'));
   if (spec.defaultName.length > 0) {
     msgSendPtr(panel, rt.selectors.get('setNameFieldStringValue:'), nsString(spec.defaultName));
+  }
+  if (spec.extensions.length > 0) {
+    msgSendPtr(panel, rt.selectors.get('setAllowedFileTypes:'), nsArrayOfStrings(spec.extensions));
   }
   return panel;
 };

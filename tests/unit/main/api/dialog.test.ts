@@ -69,6 +69,7 @@ describe('dialog.showOpenDialog', () => {
       canChooseFiles: true,
       canChooseDirectories: false,
       allowsMultipleSelection: false,
+      extensions: [],
     });
   });
 
@@ -78,7 +79,18 @@ describe('dialog.showOpenDialog', () => {
       canChooseFiles: false,
       canChooseDirectories: true,
       allowsMultipleSelection: true,
+      extensions: [],
     });
+  });
+
+  test('flattens filters into the union of extensions, dropping *', async () => {
+    await dialog.showOpenDialog({
+      filters: [
+        { name: 'Images', extensions: ['png', 'jpg'] },
+        { name: 'All', extensions: ['*'] },
+      ],
+    });
+    expect(lastOpen?.extensions).toEqual(['png', 'jpg']);
   });
 
   test('reports canceled when no paths are returned', async () => {
@@ -98,7 +110,12 @@ describe('dialog.showOpenDialog', () => {
 describe('dialog.showSaveDialog', () => {
   test('passes the default path as the default name', async () => {
     await dialog.showSaveDialog({ defaultPath: 'notes.md' });
-    expect(lastSave).toEqual({ defaultName: 'notes.md' });
+    expect(lastSave).toEqual({ defaultName: 'notes.md', extensions: [] });
+  });
+
+  test('forwards filter extensions', async () => {
+    await dialog.showSaveDialog({ filters: [{ name: 'Markdown', extensions: ['md'] }] });
+    expect(lastSave?.extensions).toEqual(['md']);
   });
 
   test('reports canceled when no path is returned', async () => {

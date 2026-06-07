@@ -28,6 +28,7 @@ if (currentPlatform() === 'macos') {
         canChooseFiles: true,
         canChooseDirectories: false,
         allowsMultipleSelection: false,
+        extensions: [],
       });
       expect(panel).not.toBe(0n);
     });
@@ -37,16 +38,27 @@ if (currentPlatform() === 'macos') {
         canChooseFiles: false,
         canChooseDirectories: true,
         allowsMultipleSelection: true,
+        extensions: [],
+      });
+      expect(panel).not.toBe(0n);
+    });
+
+    test('buildOpenPanel applies allowed file types without crashing', () => {
+      const panel = buildOpenPanel({
+        canChooseFiles: true,
+        canChooseDirectories: false,
+        allowsMultipleSelection: false,
+        extensions: ['png', 'jpg'],
       });
       expect(panel).not.toBe(0n);
     });
 
     test('buildSavePanel returns a non-null NSSavePanel', () => {
-      expect(buildSavePanel({ defaultName: 'untitled.txt' })).not.toBe(0n);
+      expect(buildSavePanel({ defaultName: 'untitled.txt', extensions: [] })).not.toBe(0n);
     });
 
     test('buildSavePanel tolerates an empty default name', () => {
-      expect(buildSavePanel({ defaultName: '' })).not.toBe(0n);
+      expect(buildSavePanel({ defaultName: '', extensions: ['md'] })).not.toBe(0n);
     });
   });
 }

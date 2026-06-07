@@ -28,9 +28,17 @@ export type MessageBoxReturnValue = {
   readonly response: number;
 };
 
+/** An Electron file-type filter: a label and its allowed extensions (no dots; `*` = any). */
+export type FileFilter = {
+  readonly name: string;
+  readonly extensions: ReadonlyArray<string>;
+};
+
 export type OpenDialogOptions = {
   /** Defaults to `['openFile']`. */
   readonly properties?: ReadonlyArray<'openFile' | 'openDirectory' | 'multiSelections'>;
+  /** File-type filters; the selectable extensions are their union. */
+  readonly filters?: ReadonlyArray<FileFilter>;
 };
 
 export type OpenDialogReturnValue = {
@@ -41,6 +49,24 @@ export type OpenDialogReturnValue = {
 export type SaveDialogOptions = {
   /** Suggested file name shown in the panel. */
   readonly defaultPath?: string;
+  /** File-type filters; the allowed extensions are their union. */
+  readonly filters?: ReadonlyArray<FileFilter>;
+};
+
+/** The deduped union of all filter extensions, dropping the `*` wildcard. */
+export const flattenFilterExtensions = (filters?: ReadonlyArray<FileFilter>): string[] => {
+  if (filters === undefined) {
+    return [];
+  }
+  const seen = new Set<string>();
+  for (const filter of filters) {
+    for (const ext of filter.extensions) {
+      if (ext !== '*') {
+        seen.add(ext);
+      }
+    }
+  }
+  return [...seen];
 };
 
 export type SaveDialogReturnValue = {
@@ -112,12 +138,16 @@ export const dialog: Dialog = {
       canChooseFiles: properties.includes('openFile'),
       canChooseDirectories: properties.includes('openDirectory'),
       allowsMultipleSelection: properties.includes('multiSelections'),
+      extensions: flattenFilterExtensions(options.filters),
     });
     return { canceled: filePaths.length === 0, filePaths };
   },
 
   async showSaveDialog(options = {}) {
-    const filePath = await getBackend().showSaveDialog({ defaultName: options.defaultPath ?? '' });
+    const filePath = await getBackend().showSaveDialog({
+      defaultName: options.defaultPath ?? '',
+      extensions: flattenFilterExtensions(options.filters),
+    });
     return { canceled: filePath.length === 0, filePath };
   },
 

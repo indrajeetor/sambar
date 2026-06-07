@@ -198,14 +198,34 @@ const showMessageBox = (spec: {
   );
 };
 
+/** Set a default `GtkFileFilter` of `*.ext` patterns, when any extension is given. */
+const applyExtensionFilter = (
+  gtk: ReturnType<typeof loadGtkDialogFFI>,
+  fileDialog: Pointer,
+  extensions: ReadonlyArray<string>,
+): void => {
+  if (extensions.length === 0) {
+    return;
+  }
+  const filter = gtk.symbols.gtk_file_filter_new();
+  if (filter === null) {
+    return;
+  }
+  for (const ext of extensions) {
+    gtk.symbols.gtk_file_filter_add_pattern(filter, cstr(`*.${ext}`));
+  }
+  gtk.symbols.gtk_file_dialog_set_default_filter(fileDialog, filter);
+};
+
 // The open spec's file/directory/multi flags are accepted for API parity but
 // not yet applied: v1 always presents a single-file open. Directory selection
 // (gtk_file_dialog_select_folder) and multi-select (gtk_file_dialog_open_multiple)
 // are out of scope.
-const showOpenDialog = (_spec: {
+const showOpenDialog = (spec: {
   readonly canChooseFiles: boolean;
   readonly canChooseDirectories: boolean;
   readonly allowsMultipleSelection: boolean;
+  readonly extensions: ReadonlyArray<string>;
 }): Promise<string[]> => {
   const gtk = loadGtkDialogFFI();
   const fileDialog = gtk.symbols.gtk_file_dialog_new();
@@ -214,6 +234,7 @@ const showOpenDialog = (_spec: {
   }
   gtk.symbols.gtk_file_dialog_set_title(fileDialog, cstr('Open'));
   gtk.symbols.gtk_file_dialog_set_modal(fileDialog, 1);
+  applyExtensionFilter(gtk, fileDialog, spec.extensions);
   return runAsyncDialog<string[]>(
     (cbPtr) => gtk.symbols.gtk_file_dialog_open(fileDialog, null, null, cbPtr, null),
     (result) => {
@@ -227,7 +248,10 @@ const showOpenDialog = (_spec: {
   );
 };
 
-const showSaveDialog = (spec: { readonly defaultName: string }): Promise<string> => {
+const showSaveDialog = (spec: {
+  readonly defaultName: string;
+  readonly extensions: ReadonlyArray<string>;
+}): Promise<string> => {
   const gtk = loadGtkDialogFFI();
   const fileDialog = gtk.symbols.gtk_file_dialog_new();
   if (fileDialog === null) {
@@ -238,6 +262,7 @@ const showSaveDialog = (spec: { readonly defaultName: string }): Promise<string>
   if (spec.defaultName.length > 0) {
     gtk.symbols.gtk_file_dialog_set_initial_name(fileDialog, cstr(spec.defaultName));
   }
+  applyExtensionFilter(gtk, fileDialog, spec.extensions);
   return runAsyncDialog<string>(
     (cbPtr) => gtk.symbols.gtk_file_dialog_save(fileDialog, null, null, cbPtr, null),
     (result) =>
