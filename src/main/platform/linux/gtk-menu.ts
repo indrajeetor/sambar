@@ -58,6 +58,8 @@ export type Bindings = {
   gMenuAppendSection(menu: bigint, section: bigint): void;
   gSimpleActionGroupNew(): bigint;
   gSimpleActionNew(name: string): bigint;
+  /** A stateful boolean action (renders as a checked/unchecked menu item). */
+  gSimpleActionNewStatefulBool(name: string, state: boolean): bigint;
   gSimpleActionSetEnabled(action: bigint, enabled: number): void;
   gActionMapAddAction(group: bigint, action: bigint): void;
   /** Connect a retained `activate` handler to `action`; returns the retained thunk. */
@@ -102,6 +104,15 @@ const realBindings = (): Bindings => {
       gio.symbols.g_menu_append_section(asPtr(menu), null, asPtr(section)),
     gSimpleActionGroupNew: () => asHandle(gio.symbols.g_simple_action_group_new()),
     gSimpleActionNew: (name) => asHandle(gio.symbols.g_simple_action_new(cstr(name), null)),
+    gSimpleActionNewStatefulBool: (name, state) =>
+      // g_variant_new_boolean returns a floating ref that new_stateful sinks.
+      asHandle(
+        gio.symbols.g_simple_action_new_stateful(
+          cstr(name),
+          null,
+          gio.symbols.g_variant_new_boolean(state ? 1 : 0),
+        ),
+      ),
     gSimpleActionSetEnabled: (action, enabled) =>
       gio.symbols.g_simple_action_set_enabled(asPtr(action), enabled),
     gActionMapAddAction: (group, action) =>
@@ -161,6 +172,17 @@ const appendItems = (
       const child = ctx.b.gMenuNew();
       appendItems(ctx, child, spec.submenu);
       ctx.b.gMenuAppendSubmenu(model, spec.label, child);
+      continue;
+    }
+    if ((spec.type === 'checkbox' || spec.type === 'radio') && spec.onClick !== undefined) {
+      const name = actionName();
+      const action = ctx.b.gSimpleActionNewStatefulBool(name, spec.checked ?? false);
+      ctx.b.gSimpleActionSetEnabled(action, spec.enabled ? 1 : 0);
+      const retained = ctx.b.connectActivate(action, spec.onClick);
+      ctx.b.gActionMapAddAction(ctx.group, action);
+      ctx.actionNames.push(name);
+      ctx.retained.push(retained);
+      ctx.b.gMenuAppend(model, spec.label, detailedAction(name));
       continue;
     }
     if (spec.type === 'normal' && spec.onClick !== undefined) {

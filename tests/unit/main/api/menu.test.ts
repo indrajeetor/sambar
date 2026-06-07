@@ -50,6 +50,30 @@ describe('MenuItem', () => {
   test('honours enabled: false', () => {
     expect(new MenuItem({ label: 'X', enabled: false }).enabled).toBe(false);
   });
+
+  test('defaults checked to false and honours checked: true', () => {
+    expect(new MenuItem({ label: 'X' }).checked).toBe(false);
+    expect(new MenuItem({ label: 'X', type: 'checkbox', checked: true }).checked).toBe(true);
+  });
+});
+
+describe('Menu checkbox/radio items', () => {
+  test('a checkbox item realizes with its type, checked state, and click', () => {
+    const menu = Menu.buildFromTemplate([
+      { label: 'Wrap', type: 'checkbox', checked: true, click: () => undefined },
+    ]);
+    menu.realize();
+    expect(realized?.[0]).toMatchObject({ label: 'Wrap', type: 'checkbox', checked: true });
+    expect(typeof realized?.[0]?.onClick).toBe('function');
+  });
+
+  test('a radio item realizes with type radio', () => {
+    const menu = Menu.buildFromTemplate([
+      { label: 'Left', type: 'radio', checked: false, click: () => undefined },
+    ]);
+    menu.realize();
+    expect(realized?.[0]).toMatchObject({ type: 'radio', checked: false });
+  });
 });
 
 describe('Menu.buildFromTemplate', () => {

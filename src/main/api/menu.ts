@@ -14,12 +14,14 @@ import * as cocoaMenu from '../platform/macos/cocoa-menu';
  * supply its own realizer later.
  */
 
-export type MenuItemType = 'normal' | 'separator' | 'submenu';
+export type MenuItemType = 'normal' | 'separator' | 'submenu' | 'checkbox' | 'radio';
 
 export type MenuItemOptions = {
   readonly label?: string;
   readonly type?: MenuItemType;
   readonly enabled?: boolean;
+  /** Whether a `checkbox`/`radio` item is checked (renders a checkmark). */
+  readonly checked?: boolean;
   /** A single-key accelerator like `'CmdOrCtrl+Q'`; only the final key is used today. */
   readonly accelerator?: string;
   readonly click?: () => void;
@@ -40,6 +42,7 @@ export class MenuItem {
   readonly label: string;
   readonly type: MenuItemType;
   readonly enabled: boolean;
+  readonly checked: boolean;
   readonly accelerator: string | undefined;
   readonly click: (() => void) | undefined;
   readonly submenu: Menu | undefined;
@@ -47,6 +50,7 @@ export class MenuItem {
   constructor(options: MenuItemOptions) {
     this.label = options.label ?? '';
     this.enabled = options.enabled ?? true;
+    this.checked = options.checked ?? false;
     this.accelerator = options.accelerator;
     this.click = options.click;
     this.submenu =
@@ -95,12 +99,14 @@ const toSpec = (item: MenuItem): NativeMenuItemSpec => {
     label: item.label,
     type: item.type,
     enabled: item.enabled,
+    checked: item.checked,
     keyEquivalent: acceleratorKey(item.accelerator),
   };
   if (item.type === 'submenu' && item.submenu !== undefined) {
     return { ...base, submenu: item.submenu.items.map(toSpec) };
   }
-  if (item.type === 'normal' && item.click !== undefined) {
+  const clickable = item.type === 'normal' || item.type === 'checkbox' || item.type === 'radio';
+  if (clickable && item.click !== undefined) {
     return { ...base, onClick: item.click };
   }
   return base;

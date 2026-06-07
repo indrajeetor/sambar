@@ -24,8 +24,10 @@ import type { Handle } from './objc';
 /** A backend-neutral description of one menu item. */
 export type NativeMenuItemSpec = {
   readonly label: string;
-  readonly type: 'normal' | 'separator' | 'submenu';
+  readonly type: 'normal' | 'separator' | 'submenu' | 'checkbox' | 'radio';
   readonly enabled: boolean;
+  /** Whether a checkbox/radio item renders checked (defaults to unchecked). */
+  readonly checked?: boolean;
   /** Single-character key equivalent (e.g. `'q'`), or `''` for none. */
   readonly keyEquivalent: string;
   readonly submenu?: ReadonlyArray<NativeMenuItemSpec>;
@@ -65,7 +67,8 @@ const realizeItem = (spec: NativeMenuItemSpec): Handle => {
     return rt.msgSend(rt.classes.get('NSMenuItem'), rt.selectors.get('separatorItem'));
   }
 
-  const hasAction = spec.type === 'normal' && spec.onClick !== undefined;
+  const checkable = spec.type === 'checkbox' || spec.type === 'radio';
+  const hasAction = (spec.type === 'normal' || checkable) && spec.onClick !== undefined;
   const action = hasAction ? rt.selectors.get('sambarMenuAction:') : 0n;
   const item = msgSendPtr3(
     rt.msgSend(rt.classes.get('NSMenuItem'), rt.selectors.get('alloc')),
@@ -80,6 +83,11 @@ const realizeItem = (spec: NativeMenuItemSpec): Handle => {
     if (spec.onClick !== undefined) {
       clickRegistry.set(item, spec.onClick);
     }
+  }
+
+  if (checkable) {
+    // NSControlStateValueOn = 1, Off = 0 — renders a checkmark for checked items.
+    msgSendI64(item, rt.selectors.get('setState:'), spec.checked ? 1n : 0n);
   }
 
   msgSendU8(item, rt.selectors.get('setEnabled:'), spec.enabled ? 1 : 0);

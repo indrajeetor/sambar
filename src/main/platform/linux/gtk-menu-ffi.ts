@@ -60,6 +60,16 @@ export const GMENU_FFI_SYMBOLS = {
     args: [FFIType.cstring, FFIType.pointer],
     returns: FFIType.pointer,
   },
+  // (name, parameter_type /*null*/, state /*GVariant*, floating ref is sunk*/) -> GSimpleAction*
+  g_simple_action_new_stateful: {
+    args: [FFIType.cstring, FFIType.pointer, FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+  // (value /*gboolean*/) -> GVariant* (floating ref)
+  g_variant_new_boolean: {
+    args: [FFIType.i32],
+    returns: FFIType.pointer,
+  },
   g_simple_action_set_enabled: {
     args: [FFIType.pointer, FFIType.i32],
     returns: FFIType.void,

@@ -64,6 +64,13 @@ const makeFakeBindings = (): { bindings: Bindings; calls: Call[] } => {
       calls.push({ fn: 'gSimpleActionNew', args: [name] });
       return p;
     },
+    gSimpleActionNewStatefulBool: (name, state) => {
+      const p = fakePtr();
+      lastNewAction = p;
+      lastNewActionName = name;
+      calls.push({ fn: 'gSimpleActionNewStatefulBool', args: [name, state] });
+      return p;
+    },
     gSimpleActionSetEnabled: (action, enabled) => {
       calls.push({ fn: 'gSimpleActionSetEnabled', args: [action, enabled] });
     },
@@ -134,6 +141,26 @@ describe('linuxMenuRealizer.realize (fake bindings)', () => {
     expect(calls.filter((c) => c.fn === 'gMenuAppend')).toHaveLength(2);
     expect(calls.filter((c) => c.fn === 'gActionMapAddAction')).toHaveLength(2);
     expect(calls.filter((c) => c.fn === 'connectActivate')).toHaveLength(2);
+  });
+
+  it('creates a stateful boolean action for a checkbox item carrying its checked state', () => {
+    const { bindings, calls } = makeFakeBindings();
+    setBindingsForTesting(bindings);
+    linuxMenuRealizer.realize([
+      {
+        label: 'Word Wrap',
+        type: 'checkbox',
+        enabled: true,
+        checked: true,
+        keyEquivalent: '',
+        onClick: () => undefined,
+      },
+    ]);
+    const stateful = calls.filter((c) => c.fn === 'gSimpleActionNewStatefulBool');
+    expect(stateful).toHaveLength(1);
+    expect(stateful[0]?.args[1]).toBe(true);
+    expect(calls.filter((c) => c.fn === 'gSimpleActionNew')).toHaveLength(0);
+    expect(calls.filter((c) => c.fn === 'connectActivate')).toHaveLength(1);
   });
 
   it('routes activate to the matching onClick via the action group', () => {
