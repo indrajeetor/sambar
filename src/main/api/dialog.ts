@@ -91,6 +91,7 @@ export type Dialog = {
   showMessageBox(options: MessageBoxOptions): Promise<MessageBoxReturnValue>;
   showOpenDialog(options?: OpenDialogOptions): Promise<OpenDialogReturnValue>;
   showSaveDialog(options?: SaveDialogOptions): Promise<SaveDialogReturnValue>;
+  showErrorBox(title: string, content: string): void;
 };
 
 export const dialog: Dialog = {
@@ -118,5 +119,11 @@ export const dialog: Dialog = {
   async showSaveDialog(options = {}) {
     const filePath = await getBackend().showSaveDialog({ defaultName: options.defaultPath ?? '' });
     return { canceled: filePath.length === 0, filePath };
+  },
+
+  // Electron's showErrorBox is sync/void; surface it through the message-box
+  // backend (an error-styled alert). Fire-and-forget on Linux (async dialog).
+  showErrorBox(title, content) {
+    void getBackend().showMessageBox({ message: title, detail: content, buttons: ['OK'] });
   },
 };

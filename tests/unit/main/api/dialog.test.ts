@@ -112,6 +112,17 @@ describe('dialog.showSaveDialog', () => {
   });
 });
 
+describe('dialog.showErrorBox', () => {
+  test('routes the title and content through an OK message box', () => {
+    dialog.showErrorBox('Boom', 'Something failed');
+    expect(lastMessageBox).toEqual({
+      message: 'Boom',
+      detail: 'Something failed',
+      buttons: ['OK'],
+    });
+  });
+});
+
 describe('async DialogBackend (Promise-returning, e.g. Linux GTK)', () => {
   test('flattens a Promise<number> from showMessageBox without double-wrapping', async () => {
     const asyncBackend: DialogBackend = {
