@@ -30,6 +30,10 @@
     "./renderer": {
       "types": "./src/renderer/index.ts",
       "import": "./src/renderer/index.ts"
+    },
+    "./electron": {
+      "types": "./src/electron.ts",
+      "import": "./src/electron.ts"
     }
   },
   "files": [
