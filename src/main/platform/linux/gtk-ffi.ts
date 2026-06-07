@@ -88,6 +88,10 @@ export const GTK_FFI_SYMBOLS = {
     args: [FFIType.pointer],
     returns: FFIType.i32,
   },
+  gtk_about_dialog_new: {
+    args: [],
+    returns: FFIType.pointer,
+  },
 } as const;
 
 const cache: { ffi: ReturnType<typeof dlopen<typeof GTK_FFI_SYMBOLS>> | undefined } = {

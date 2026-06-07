@@ -58,6 +58,11 @@ describe('GTK_FFI_SYMBOLS (shape-only ABI assertions)', () => {
     expect(GTK_FFI_SYMBOLS.gtk_widget_get_height.returns).toBe(FFIType.i32);
   });
 
+  it('declares gtk_about_dialog_new as [] -> pointer (showAboutPanel)', () => {
+    expect(GTK_FFI_SYMBOLS.gtk_about_dialog_new.args).toEqual([]);
+    expect(GTK_FFI_SYMBOLS.gtk_about_dialog_new.returns).toBe(FFIType.pointer);
+  });
+
   it('reads the title as a nullable pointer (not cstring) so 0 can be guarded', () => {
     expect(GTK_FFI_SYMBOLS.gtk_window_get_title.args).toEqual([FFIType.pointer]);
     expect(GTK_FFI_SYMBOLS.gtk_window_get_title.returns).toBe(FFIType.pointer);

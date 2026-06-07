@@ -35,6 +35,13 @@ if (currentPlatform() === 'linux') {
       expect(typeof lib.symbols.gtk_window_present).toBe('function');
     });
 
+    test('gtk_about_dialog_new resolves and constructs a dialog (showAboutPanel)', () => {
+      const lib = loadGtkFFI();
+      expect(typeof lib.symbols.gtk_about_dialog_new).toBe('function');
+      lib.symbols.gtk_init_check();
+      expect(lib.symbols.gtk_about_dialog_new()).not.toBeNull();
+    });
+
     test('resolves the newly added GTK4 window/widget symbols', () => {
       const lib = loadGtkFFI();
       for (const name of [

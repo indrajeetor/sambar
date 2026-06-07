@@ -524,6 +524,15 @@ export class LinuxApplication implements NativeApplication {
     this.#readyCallbacks.push(callback);
   }
 
+  /** Show a GTK about dialog (Electron's `showAboutPanel`). */
+  showAboutPanel(): void {
+    const gtk = loadGtkFFI();
+    const dialog = gtk.symbols.gtk_about_dialog_new();
+    if (dialog !== null) {
+      gtk.symbols.gtk_window_present(dialog);
+    }
+  }
+
   createWindow(options: NativeWindowOptions): NativeWindow {
     const window = new LinuxWindow(options);
     this.#windows.add(window);
