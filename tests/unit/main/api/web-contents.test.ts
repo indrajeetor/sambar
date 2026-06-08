@@ -12,6 +12,7 @@ const makeFakeNative = (): {
   sent: string[];
   execs: string[];
   zooms: number[];
+  userAgents: string[];
   fireRenderer: (json: string) => void;
   fireNavigation: (event: NativeNavigationEvent) => void;
   fireWindowOpen: (url: string) => void;
@@ -19,6 +20,7 @@ const makeFakeNative = (): {
   const sent: string[] = [];
   const execs: string[] = [];
   const zooms: number[] = [];
+  const userAgents: string[] = [];
   let onEnvelope: ((json: string) => void) | undefined;
   let onNav: ((event: NativeNavigationEvent) => void) | undefined;
   let onWindowOpen: ((url: string) => void) | undefined;
@@ -37,6 +39,7 @@ const makeFakeNative = (): {
     },
     openDevTools: () => undefined,
     setZoomFactor: (factor) => zooms.push(factor),
+    setUserAgent: (ua) => userAgents.push(ua),
     sendEnvelopeToRenderer: (json) => sent.push(json),
     onRendererEnvelope: (cb) => {
       onEnvelope = cb;
@@ -53,6 +56,7 @@ const makeFakeNative = (): {
     sent,
     execs,
     zooms,
+    userAgents,
     fireRenderer: (json) => onEnvelope?.(json),
     fireNavigation: (event) => onNav?.(event),
     fireWindowOpen: (url) => onWindowOpen?.(url),
@@ -111,6 +115,20 @@ describe('WebContents.setZoomFactor / getZoomFactor', () => {
     wc.setZoomFactor(1.5);
     expect(zooms).toEqual([1.5]);
     expect(wc.getZoomFactor()).toBe(1.5);
+  });
+});
+
+describe('WebContents.setUserAgent / getUserAgent', () => {
+  test('defaults to an empty override', () => {
+    expect(new WebContents(makeFakeNative().native).getUserAgent()).toBe('');
+  });
+
+  test('setUserAgent applies natively and updates getUserAgent', () => {
+    const { native, userAgents } = makeFakeNative();
+    const wc = new WebContents(native);
+    wc.setUserAgent('Sambar/1.0 (test)');
+    expect(userAgents).toEqual(['Sambar/1.0 (test)']);
+    expect(wc.getUserAgent()).toBe('Sambar/1.0 (test)');
   });
 });
 
@@ -294,6 +312,7 @@ describe('WebContents navigation', () => {
       executeJavaScript: () => Promise.resolve(undefined),
       openDevTools: () => undefined,
       setZoomFactor: () => undefined,
+      setUserAgent: () => undefined,
       sendEnvelopeToRenderer: () => undefined,
       onRendererEnvelope: () => undefined,
       onNavigation: () => undefined,

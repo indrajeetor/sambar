@@ -12,7 +12,7 @@ describe('createElectronShim', () => {
   test('throws an actionable error for a known-but-unimplemented module', () => {
     const shim = createElectronShim({});
     expect(() => shim['autoUpdater']).toThrow(notImplementedMessage('autoUpdater'));
-    expect(() => shim['session']).toThrow(notImplementedMessage('session'));
+    expect(() => shim['safeStorage']).toThrow(notImplementedMessage('safeStorage'));
   });
 
   test('returns undefined for an unknown name (like a plain object)', () => {

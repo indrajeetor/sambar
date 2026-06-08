@@ -191,6 +191,15 @@ class LinuxWebContents implements NativeWebContents {
     webkit.symbols.webkit_web_view_set_zoom_level(this.#view, factor);
   }
 
+  setUserAgent(userAgent: string): void {
+    const webkit = loadWebKitGtkFFI();
+    // Set on the view's WebKitSettings; takes effect on the next navigation.
+    webkit.symbols.webkit_settings_set_user_agent(
+      webkit.symbols.webkit_web_view_get_settings(this.#view),
+      cstr(userAgent),
+    );
+  }
+
   /**
    * Evaluate `code` in the PAGE world (world_name = NULL) and resolve to its
    * completion value. The result returns out-of-band through the page-world

@@ -36,6 +36,7 @@ export {
   protocol,
 } from './api/protocol';
 export { type Display, type Point, screen, type Size } from './api/screen';
+export { Session, session } from './api/session';
 export { shell, type Shell } from './api/shell';
 export { Tray, type TrayBackend, type TrayInstance } from './api/tray';
 export {

@@ -71,6 +71,7 @@ export const IMPLEMENTED_MODULES = [
   'powerMonitor',
   'protocol',
   'screen',
+  'session',
   'shell',
   'Tray',
 ] as const;

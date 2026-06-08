@@ -8,6 +8,7 @@ import { ensureNativeStarted } from '../bootstrap';
 import { nativeApp } from '../native-app';
 import type { Rect } from '../platform/native';
 import { app } from './app';
+import { session } from './session';
 import { WebContents } from './web-contents';
 
 /**
@@ -144,6 +145,12 @@ export class BrowserWindow extends EventEmitter {
       ...(options.fullscreen !== undefined ? { fullscreen: options.fullscreen } : {}),
     });
     this.webContents = new WebContents(this.#native.webContents);
+    // Apply the default session's User-Agent override (if any) before the app's
+    // first navigation on this window.
+    const sessionUserAgent = session.defaultSession.getUserAgent();
+    if (sessionUserAgent !== '') {
+      this.webContents.setUserAgent(sessionUserAgent);
+    }
     app.emit('web-contents-created', makeCancelableEvent(), this.webContents);
 
     this.#native.onClosed(() => {

@@ -129,6 +129,11 @@ export const WEBKITGTK_FFI_SYMBOLS = {
     args: [FFIType.pointer, FFIType.i32],
     returns: FFIType.void,
   },
+  // (settings, user_agent /*cstring; null resets to default*/) -> void
+  webkit_settings_set_user_agent: {
+    args: [FFIType.pointer, FFIType.cstring],
+    returns: FFIType.void,
+  },
   webkit_web_view_get_inspector: {
     args: [FFIType.pointer],
     returns: FFIType.pointer,

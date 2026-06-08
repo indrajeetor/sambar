@@ -88,6 +88,8 @@ export interface NativeWebContents {
   openDevTools(): void;
   /** Set the page zoom factor (`1` = 100%). */
   setZoomFactor(factor: number): void;
+  /** Override the User-Agent string sent on subsequent navigations. */
+  setUserAgent(userAgent: string): void;
   /** Deliver a raw IPC envelope (JSON) to the renderer's preload bridge. */
   sendEnvelopeToRenderer(envelopeJson: string): void;
   /** Register a callback for raw IPC envelopes (JSON) posted by the renderer. */

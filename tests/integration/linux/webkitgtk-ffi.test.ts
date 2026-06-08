@@ -87,6 +87,21 @@ if (currentPlatform() === 'linux') {
       );
     });
 
+    test('sets a custom User-Agent on a real view via WebKitSettings', () => {
+      const gtk = loadGtkFFI();
+      if (gtk.symbols.gtk_init_check() === 0) {
+        return; // No display.
+      }
+      const webkit = loadWebKitGtkFFI();
+      const view = webkit.symbols.webkit_web_view_new();
+      const settings = webkit.symbols.webkit_web_view_get_settings(view);
+      expect(settings).not.toBeNull();
+      // Must resolve + not crash; the UA takes effect on the next navigation.
+      expect(() =>
+        webkit.symbols.webkit_settings_set_user_agent(settings, cstr('Sambar/1.0 (integration)')),
+      ).not.toThrow();
+    });
+
     test('readGetUriResult returns "" for a NULL pointer', () => {
       expect(readGetUriResult(null)).toBe('');
     });

@@ -18,6 +18,7 @@ import {
   resetWindowRegistryForTesting,
 } from '../../../../src/main/api/browser-window';
 import { app } from '../../../../src/main/api/app';
+import { session } from '../../../../src/main/api/session';
 import { resetWebContentsIdsForTesting } from '../../../../src/main/api/web-contents';
 import { appExitCodes, installSafeAppExit } from '../../../helpers/safe-app-exit';
 
@@ -33,6 +34,8 @@ type FakeWindow = NativeWindow & {
   fireCloseRequest: () => boolean;
   /** Number of times the (idempotent) teardown ran. */
   teardownCount: () => number;
+  /** The User-Agent applied to this window's web contents, if any. */
+  appliedUserAgent: () => string | undefined;
 };
 
 const makeFakeWindow = (options: NativeWindowOptions): FakeWindow => {
@@ -55,6 +58,7 @@ const makeFakeWindow = (options: NativeWindowOptions): FakeWindow => {
     tornDown = true;
     teardowns += 1;
   };
+  let appliedUserAgent: string | undefined;
   const webContents: NativeWebContents = {
     loadURL: () => undefined,
     loadHTML: () => undefined,
@@ -67,6 +71,9 @@ const makeFakeWindow = (options: NativeWindowOptions): FakeWindow => {
     executeJavaScript: () => Promise.resolve(undefined),
     openDevTools: () => undefined,
     setZoomFactor: () => undefined,
+    setUserAgent: (ua) => {
+      appliedUserAgent = ua;
+    },
     sendEnvelopeToRenderer: () => undefined,
     onRendererEnvelope: () => undefined,
     onNavigation: () => undefined,
@@ -146,6 +153,7 @@ const makeFakeWindow = (options: NativeWindowOptions): FakeWindow => {
       return false;
     },
     teardownCount: () => teardowns,
+    appliedUserAgent: () => appliedUserAgent,
   };
 };
 
@@ -187,6 +195,20 @@ beforeEach(() => {
 afterEach(() => {
   setNativeAppForTesting(undefined);
   app.resetForTesting();
+  session.defaultSession.resetForTesting();
+});
+
+describe('BrowserWindow default-session user agent', () => {
+  test('applies the default session user agent to a new window', () => {
+    session.defaultSession.setUserAgent('Sambar/UA (test)');
+    new BrowserWindow();
+    expect(windows[0]?.appliedUserAgent()).toBe('Sambar/UA (test)');
+  });
+
+  test('does not override the user agent when the session has none', () => {
+    new BrowserWindow();
+    expect(windows[0]?.appliedUserAgent()).toBeUndefined();
+  });
 });
 
 describe('BrowserWindow construction', () => {

@@ -325,6 +325,11 @@ class MacOSWebContents implements NativeWebContents {
     msgSendF64(this.#webview, cocoa().selectors.get('setPageZoom:'), factor);
   }
 
+  setUserAgent(userAgent: string): void {
+    // WKWebView.customUserAgent; takes effect on the next navigation.
+    msgSendPtr(this.#webview, cocoa().selectors.get('setCustomUserAgent:'), nsString(userAgent));
+  }
+
   sendEnvelopeToRenderer(envelopeJson: string): void {
     // Internal dispatch targets the ISOLATED world, where `__sambar` lives.
     this.#evaluateInWorld(dispatchScript(envelopeJson), this.#isolatedWorld);

@@ -50,6 +50,7 @@ export class WebContents extends EventEmitter {
   readonly #native: NativeWebContents;
   #cssCounter = 0;
   #zoomFactor = 1;
+  #userAgent = '';
 
   constructor(native: NativeWebContents) {
     super();
@@ -147,6 +148,17 @@ export class WebContents extends EventEmitter {
   /** The current page zoom factor. */
   getZoomFactor(): number {
     return this.#zoomFactor;
+  }
+
+  /** Override the User-Agent string for subsequent navigations on this view. */
+  setUserAgent(userAgent: string): void {
+    this.#userAgent = userAgent;
+    this.#native.setUserAgent(userAgent);
+  }
+
+  /** The User-Agent override set via {@link setUserAgent}, or `''` if none (platform default). */
+  getUserAgent(): string {
+    return this.#userAgent;
   }
 
   /**
