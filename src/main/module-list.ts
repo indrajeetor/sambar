@@ -68,6 +68,7 @@ export const IMPLEMENTED_MODULES = [
   'nativeImage',
   'nativeTheme',
   'Notification',
+  'powerMonitor',
   'protocol',
   'screen',
   'shell',

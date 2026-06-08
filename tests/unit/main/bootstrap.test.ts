@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { app } from '../../../src/main/api/app';
 import { nativeTheme } from '../../../src/main/api/native-theme';
+import { powerMonitor } from '../../../src/main/api/power-monitor';
 import { ensureNativeStarted, resetBootstrapForTesting } from '../../../src/main/bootstrap';
 import { setNativeAppForTesting } from '../../../src/main/native-app';
 import type { NativeApplication } from '../../../src/main/platform/native';
@@ -45,9 +46,10 @@ const makeNative = (): NativeTriggers => {
 
 describe('bootstrap native wiring', () => {
   beforeEach(() => {
-    // Pre-arm the once-guard with a no-op so the synthetic `onReady` below does
-    // not drive the real native appearance observer (FFI) during a unit test.
+    // Pre-arm the once-guards with no-ops so the synthetic `onReady` below does
+    // not drive the real native OS observers (FFI) during a unit test.
     nativeTheme.startObserving(() => undefined);
+    powerMonitor.startObserving(() => undefined);
   });
 
   afterEach(() => {
@@ -55,6 +57,7 @@ describe('bootstrap native wiring', () => {
     app.resetForTesting();
     resetBootstrapForTesting();
     nativeTheme.resetObservingForTesting();
+    powerMonitor.resetObservingForTesting();
   });
 
   test('forwards native activate to the app activate event with hasVisibleWindows', () => {

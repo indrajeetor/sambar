@@ -28,6 +28,7 @@ export {
 } from './api/native-image';
 export { nativeTheme, type NativeTheme } from './api/native-theme';
 export { Notification, type NotificationOptions } from './api/notification';
+export { type PowerMonitor, powerMonitor } from './api/power-monitor';
 export {
   type ProtocolHandler,
   type ProtocolRequest,
