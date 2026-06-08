@@ -23,10 +23,14 @@ import { gdkNativeImageBackend } from '../platform/linux/gdk-native-image';
  *
  * V1 surface: `createFromPath`, `createFromBuffer` (PNG/JPEG bytes),
  * `createFromDataURL`, `createEmpty`; instance `getSize`, `isEmpty`, `toPNG`,
- * `toJPEG`, `toDataURL`. `toJPEG`'s quality is honored on macOS; Linux v1 uses
- * GdkPixbuf's default quality (option-key arrays are a follow-up). DEFERRED
- * (documented, not stubbed as fake no-ops): `resize`, `crop`,
- * `getScaleFactors`/`getAspectRatio`, template-image flags, `{ scaleFactor }`.
+ * `toJPEG`, `toDataURL`, `setTemplateImage`/`isTemplateImage`. `toJPEG`'s quality
+ * is honored on macOS; Linux v1 uses GdkPixbuf's default quality (option-key
+ * arrays are a follow-up). The template flag is plain JS metadata (Electron's own
+ * model): it marks an image as a monochrome template so menu-bar/tray rendering
+ * can recolor it for light/dark — the macOS `NSImage setTemplate:` is applied
+ * when the image is realized for a `Tray`/menu, not on the decoded rep here.
+ * DEFERRED (documented, not stubbed as fake no-ops): `resize`, `crop`,
+ * `getScaleFactors`/`getAspectRatio`, `{ scaleFactor }`.
  */
 
 /** An opaque native image handle, carried as a `bigint` (macOS) or `Pointer` bigint (Linux). */
@@ -69,6 +73,7 @@ export class NativeImage {
   readonly #width: number;
   readonly #height: number;
   readonly #empty: boolean;
+  #template = false;
 
   /** @internal Constructed by the factory from a decoded image + its backend. */
   constructor(backend: NativeImageBackend, decoded: DecodedImage) {
@@ -108,6 +113,16 @@ export class NativeImage {
   /** The image as a `data:image/png;base64,...` URL (empty payload when empty). */
   toDataURL(): string {
     return `${DATA_URL_PREFIX}${Buffer.from(this.toPNG()).toString('base64')}`;
+  }
+
+  /** Mark (or unmark) the image as a template — a monochrome icon the OS recolors for light/dark. */
+  setTemplateImage(option: boolean): void {
+    this.#template = option;
+  }
+
+  /** Whether the image is marked as a template image. */
+  isTemplateImage(): boolean {
+    return this.#template;
   }
 }
 

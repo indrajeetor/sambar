@@ -78,6 +78,29 @@ describe('nativeImage factory', () => {
   });
 });
 
+describe('NativeImage.setTemplateImage / isTemplateImage', () => {
+  test('defaults to false and round-trips the flag', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 3n, width: 1, height: 1, empty: false }, new Uint8Array([1])),
+    );
+    const image = nativeImage.createFromPath('/tmp/x.png');
+    expect(image.isTemplateImage()).toBe(false);
+    image.setTemplateImage(true);
+    expect(image.isTemplateImage()).toBe(true);
+    image.setTemplateImage(false);
+    expect(image.isTemplateImage()).toBe(false);
+  });
+
+  test('an empty image still tracks the flag', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 0n, width: 0, height: 0, empty: true }, new Uint8Array([1])),
+    );
+    const image = nativeImage.createEmpty();
+    image.setTemplateImage(true);
+    expect(image.isTemplateImage()).toBe(true);
+  });
+});
+
 describe('NativeImage.isEmpty', () => {
   test('is true when the backend reports the decode produced an empty image', () => {
     setNativeImageBackendForTesting(
