@@ -30,6 +30,12 @@ export type NativeMenuItemSpec = {
   readonly checked?: boolean;
   /** Single-character key equivalent (e.g. `'q'`), or `''` for none. */
   readonly keyEquivalent: string;
+  /** `NSEventModifierFlags` mask for the key equivalent; absent ⇒ AppKit default (Command). */
+  readonly modifierMask?: bigint;
+  /** A predefined role name (the item's behavior is native, not a JS click). */
+  readonly role?: string;
+  /** The macOS first-responder selector for a role item (e.g. `'copy:'`). */
+  readonly roleSelector?: string;
   readonly submenu?: ReadonlyArray<NativeMenuItemSpec>;
   readonly onClick?: () => void;
 };
@@ -68,8 +74,15 @@ const realizeItem = (spec: NativeMenuItemSpec): Handle => {
   }
 
   const checkable = spec.type === 'checkbox' || spec.type === 'radio';
-  const hasAction = (spec.type === 'normal' || checkable) && spec.onClick !== undefined;
-  const action = hasAction ? rt.selectors.get('sambarMenuAction:') : 0n;
+  // A role item's action is the native first-responder selector with a NIL target,
+  // so AppKit routes it up the responder chain (no SambarMenuTarget / clickRegistry).
+  const isRole = spec.roleSelector !== undefined;
+  const hasClick = !isRole && (spec.type === 'normal' || checkable) && spec.onClick !== undefined;
+  const action = isRole
+    ? rt.selectors.get(spec.roleSelector as string)
+    : hasClick
+      ? rt.selectors.get('sambarMenuAction:')
+      : 0n;
   const item = msgSendPtr3(
     rt.msgSend(rt.classes.get('NSMenuItem'), rt.selectors.get('alloc')),
     rt.selectors.get('initWithTitle:action:keyEquivalent:'),
@@ -78,11 +91,17 @@ const realizeItem = (spec: NativeMenuItemSpec): Handle => {
     nsString(spec.keyEquivalent),
   );
 
-  if (hasAction) {
+  if (hasClick) {
     msgSendPtr(item, rt.selectors.get('setTarget:'), ensureTarget());
     if (spec.onClick !== undefined) {
       clickRegistry.set(item, spec.onClick);
     }
+  }
+
+  // Apply the explicit modifier mask so multi-modifier accelerators (e.g. redo's
+  // Shift+Cmd+Z) don't collapse to AppKit's Command-only default.
+  if (spec.modifierMask !== undefined && spec.keyEquivalent !== '') {
+    msgSendI64(item, rt.selectors.get('setKeyEquivalentModifierMask:'), spec.modifierMask);
   }
 
   if (checkable) {
@@ -90,7 +109,13 @@ const realizeItem = (spec: NativeMenuItemSpec): Handle => {
     msgSendI64(item, rt.selectors.get('setState:'), spec.checked ? 1n : 0n);
   }
 
-  msgSendU8(item, rt.selectors.get('setEnabled:'), spec.enabled ? 1 : 0);
+  // For role items, let AppKit auto-enable via the responder chain (Copy greys out
+  // when nothing is selected); only honor an explicit `enabled: false`.
+  if (!isRole) {
+    msgSendU8(item, rt.selectors.get('setEnabled:'), spec.enabled ? 1 : 0);
+  } else if (spec.enabled === false) {
+    msgSendU8(item, rt.selectors.get('setEnabled:'), 0);
+  }
 
   if (spec.type === 'submenu' && spec.submenu !== undefined) {
     const submenu = realizeMenu(spec.submenu);

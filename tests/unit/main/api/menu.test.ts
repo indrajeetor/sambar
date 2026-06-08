@@ -76,6 +76,58 @@ describe('Menu checkbox/radio items', () => {
   });
 });
 
+describe('MenuItem roles', () => {
+  test('a role fills the default label and accelerator', () => {
+    const copy = new MenuItem({ role: 'copy' });
+    expect(copy.role).toBe('copy');
+    expect(copy.label).toBe('Copy');
+    expect(copy.accelerator).toBe('CommandOrControl+C');
+    expect(copy.type).toBe('normal');
+  });
+
+  test('an app-supplied label/accelerator overrides the role defaults', () => {
+    const item = new MenuItem({
+      role: 'copy',
+      label: 'Copy Selection',
+      accelerator: 'CmdOrCtrl+Shift+C',
+    });
+    expect(item.label).toBe('Copy Selection');
+    expect(item.accelerator).toBe('CmdOrCtrl+Shift+C');
+  });
+});
+
+describe('Menu role realization spec', () => {
+  test('a role item realizes with its macOS selector and no onClick', () => {
+    const menu = Menu.buildFromTemplate([{ role: 'copy' }]);
+    menu.realize();
+    expect(realized?.[0]).toMatchObject({ role: 'copy', roleSelector: 'copy:', label: 'Copy' });
+    expect(realized?.[0]?.onClick).toBeUndefined();
+  });
+
+  test('a role takes precedence over an explicit click (no onClick synthesized)', () => {
+    const menu = Menu.buildFromTemplate([{ role: 'paste', click: () => undefined }]);
+    menu.realize();
+    expect(realized?.[0]?.roleSelector).toBe('paste:');
+    expect(realized?.[0]?.onClick).toBeUndefined();
+  });
+
+  test('redo carries a Shift modifier mask, distinct from undo (no collision)', () => {
+    Menu.buildFromTemplate([{ role: 'undo' }, { role: 'redo' }]).realize();
+    const shiftBit = 1n << 17n;
+    expect(realized?.[0]?.keyEquivalent).toBe('z'); // undo
+    expect((realized?.[0]?.modifierMask ?? 0n) & shiftBit).toBe(0n);
+    expect(realized?.[1]?.keyEquivalent).toBe('z'); // redo
+    expect((realized?.[1]?.modifierMask ?? 0n) & shiftBit).toBe(shiftBit);
+  });
+
+  test('a no-accelerator role (delete) emits an empty key equivalent and no mask', () => {
+    Menu.buildFromTemplate([{ role: 'delete' }]).realize();
+    expect(realized?.[0]?.roleSelector).toBe('delete:');
+    expect(realized?.[0]?.keyEquivalent).toBe('');
+    expect(realized?.[0]?.modifierMask).toBeUndefined();
+  });
+});
+
 describe('Menu.buildFromTemplate', () => {
   test('creates a MenuItem per template entry, in order', () => {
     const menu = Menu.buildFromTemplate([{ label: 'A' }, { label: 'B' }]);

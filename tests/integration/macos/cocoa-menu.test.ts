@@ -20,6 +20,24 @@ if (currentPlatform() === 'macos') {
       expect(menuItemCount(menu)).toBe(3);
     });
 
+    test('a role item wires the first-responder selector with a nil target', () => {
+      const rt = cocoa();
+      const menu = realizeMenu([
+        {
+          label: 'Copy',
+          type: 'normal',
+          enabled: true,
+          keyEquivalent: 'c',
+          role: 'copy',
+          roleSelector: 'copy:',
+        },
+      ]);
+      const item = msgSendI64(menu, rt.selectors.get('itemAtIndex:'), 0n);
+      // action == @selector(copy:); target == nil (0n) so AppKit uses the responder chain.
+      expect(rt.msgSend(item, rt.selectors.get('action'))).toBe(rt.selectors.get('copy:'));
+      expect(rt.msgSend(item, rt.selectors.get('target'))).toBe(0n);
+    });
+
     test('performMenuItem fires the clicked item JS callback with the right item', () => {
       const fired: string[] = [];
       const menu = realizeMenu([
