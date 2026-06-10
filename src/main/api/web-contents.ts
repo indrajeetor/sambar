@@ -150,6 +150,16 @@ export class WebContents extends EventEmitter {
     return this.#zoomFactor;
   }
 
+  /** Set the page zoom by LEVEL (`0` = 100%); Electron's `zoomFactor = 1.2 ** zoomLevel`. */
+  setZoomLevel(level: number): void {
+    this.setZoomFactor(1.2 ** level);
+  }
+
+  /** The current zoom level (inverse of {@link setZoomLevel}). */
+  getZoomLevel(): number {
+    return Math.log(this.#zoomFactor) / Math.log(1.2);
+  }
+
   /** Override the User-Agent string for subsequent navigations on this view. */
   setUserAgent(userAgent: string): void {
     this.#userAgent = userAgent;

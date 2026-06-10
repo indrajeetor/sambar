@@ -118,6 +118,16 @@ describe('resolveResizeDimensions / clampCropRect (pure)', () => {
   });
 });
 
+describe('NativeImage.getAspectRatio', () => {
+  test('returns width/height, and 0 for an empty image', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 1n, width: 100, height: 50, empty: false }, new Uint8Array([1])),
+    );
+    expect(nativeImage.createFromPath('/x.png').getAspectRatio()).toBe(2);
+    expect(nativeImage.createEmpty().getAspectRatio()).toBe(0);
+  });
+});
+
 describe('NativeImage.resize / crop', () => {
   test('resize with only width preserves aspect ratio and calls the backend', () => {
     setNativeImageBackendForTesting(

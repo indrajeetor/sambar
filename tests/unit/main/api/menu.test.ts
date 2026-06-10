@@ -132,6 +132,24 @@ describe('Menu role realization spec', () => {
   });
 });
 
+describe('Menu.insert / getMenuItemById', () => {
+  test('insert places an item at the given position (clamped)', () => {
+    const menu = Menu.buildFromTemplate([{ label: 'A' }, { label: 'C' }]);
+    menu.insert(1, new MenuItem({ label: 'B' }));
+    expect(menu.items.map((i) => i.label)).toEqual(['A', 'B', 'C']);
+  });
+
+  test('getMenuItemById finds an item by id, including inside submenus', () => {
+    const menu = Menu.buildFromTemplate([
+      { label: 'File', submenu: [{ label: 'Open', id: 'open' }] },
+      { label: 'X', id: 'x' },
+    ]);
+    expect(menu.getMenuItemById('open')?.label).toBe('Open');
+    expect(menu.getMenuItemById('x')?.label).toBe('X');
+    expect(menu.getMenuItemById('missing')).toBeNull();
+  });
+});
+
 describe('Menu.popup target resolution', () => {
   const makeTarget = (): { target: PopupTarget; calls: Array<{ fn: string; args: unknown[] }> } => {
     const calls: Array<{ fn: string; args: unknown[] }> = [];

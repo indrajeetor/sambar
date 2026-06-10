@@ -142,6 +142,11 @@ export class NativeImage {
     return this.#empty;
   }
 
+  /** The image's width-to-height ratio (`0` when empty / zero-height). */
+  getAspectRatio(): number {
+    return this.#height === 0 ? 0 : this.#width / this.#height;
+  }
+
   /** Encode the image to PNG bytes. Returns an empty buffer for an empty image. */
   toPNG(): Uint8Array {
     if (this.#empty) {

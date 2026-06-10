@@ -116,6 +116,17 @@ describe('WebContents.setZoomFactor / getZoomFactor', () => {
     expect(zooms).toEqual([1.5]);
     expect(wc.getZoomFactor()).toBe(1.5);
   });
+
+  test('setZoomLevel applies factor 1.2**level; getZoomLevel inverts it', () => {
+    const { native, zooms } = makeFakeNative();
+    const wc = new WebContents(native);
+    wc.setZoomLevel(1);
+    expect(zooms[zooms.length - 1]).toBeCloseTo(1.2);
+    expect(wc.getZoomFactor()).toBeCloseTo(1.2);
+    expect(wc.getZoomLevel()).toBeCloseTo(1);
+    wc.setZoomLevel(0);
+    expect(wc.getZoomLevel()).toBeCloseTo(0);
+  });
 });
 
 describe('WebContents.setUserAgent / getUserAgent', () => {

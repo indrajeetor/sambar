@@ -48,6 +48,8 @@ export type MenuRole =
 export type MenuItemOptions = {
   readonly label?: string;
   readonly type?: MenuItemType;
+  /** A stable id for {@link Menu.getMenuItemById}. */
+  readonly id?: string;
   readonly enabled?: boolean;
   /** Whether a `checkbox`/`radio` item is checked (renders a checkmark). */
   readonly checked?: boolean;
@@ -207,6 +209,7 @@ const acceleratorModifierMask = (accelerator: string | undefined): bigint => {
 export class MenuItem {
   readonly label: string;
   readonly type: MenuItemType;
+  readonly id: string | undefined;
   readonly enabled: boolean;
   readonly checked: boolean;
   readonly accelerator: string | undefined;
@@ -215,6 +218,7 @@ export class MenuItem {
   readonly submenu: Menu | undefined;
 
   constructor(options: MenuItemOptions) {
+    this.id = options.id;
     this.role = options.role;
     const roleDefault = options.role !== undefined ? ROLE_DEFAULTS[options.role] : undefined;
     // App-supplied label/accelerator win over the role's defaults.
@@ -370,6 +374,25 @@ export class Menu {
   /** Append an item to the end of the menu. */
   append(item: MenuItem): void {
     this.items.push(item);
+  }
+
+  /** Insert `item` at position `pos` (clamped to the menu's bounds). */
+  insert(pos: number, item: MenuItem): void {
+    this.items.splice(Math.max(0, Math.min(pos, this.items.length)), 0, item);
+  }
+
+  /** Find an item by its `id`, searching submenus depth-first; `null` if not found. */
+  getMenuItemById(id: string): MenuItem | null {
+    for (const item of this.items) {
+      if (item.id === id) {
+        return item;
+      }
+      const nested = item.submenu?.getMenuItemById(id);
+      if (nested != null) {
+        return nested;
+      }
+    }
+    return null;
   }
 
   /** Build a menu from a template of plain option objects. */
