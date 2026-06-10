@@ -8,6 +8,7 @@ import {
   getCurrentAppMenu,
   getMenuEntry,
   linuxMenuRealizer,
+  realizeForWindow,
   resetCurrentAppMenuForTesting,
   setBindingsForTesting,
 } from '../../../../../src/main/platform/linux/gtk-menu';
@@ -267,6 +268,42 @@ describe('linuxMenuRealizer.realize (fake bindings)', () => {
       { label: 'B', type: 'normal', enabled: true, keyEquivalent: '', onClick: () => undefined },
     ]);
     expect(getMenuEntry(handle)?.retainedCount).toBe(2);
+  });
+});
+
+describe('realizeForWindow (per-window role wiring)', () => {
+  const role = (label: string, extra: Partial<NativeMenuItemSpec>): NativeMenuItemSpec => ({
+    label,
+    type: 'normal',
+    enabled: true,
+    keyEquivalent: '',
+    ...extra,
+  });
+
+  it('wires a role item with a Linux action to dispatchRole, fired on activate', () => {
+    const { bindings, calls } = makeFakeBindings();
+    setBindingsForTesting(bindings);
+    const dispatched: NativeMenuItemSpec[] = [];
+    const copy = role('Copy', { role: 'copy', editingCommand: 'Copy' });
+    const entry = realizeForWindow([copy], (s) => dispatched.push(s));
+    expect(calls.filter((c) => c.fn === 'connectActivate')).toHaveLength(1);
+    expect(entry.actionNames).toHaveLength(1);
+    bindings.activateAction(entry.group, detailedAction(entry.actionNames[0] as string), null);
+    expect(dispatched).toEqual([copy]);
+  });
+
+  it('leaves a role with no Linux action (quit) inert — no action wired', () => {
+    const { bindings, calls } = makeFakeBindings();
+    setBindingsForTesting(bindings);
+    realizeForWindow([role('Quit', { role: 'quit' })], () => undefined);
+    expect(calls.filter((c) => c.fn === 'connectActivate')).toHaveLength(0);
+  });
+
+  it('the shared realize() (no dispatcher) leaves role items inert', () => {
+    const { bindings, calls } = makeFakeBindings();
+    setBindingsForTesting(bindings);
+    linuxMenuRealizer.realize([role('Copy', { role: 'copy', editingCommand: 'Copy' })]);
+    expect(calls.filter((c) => c.fn === 'connectActivate')).toHaveLength(0);
   });
 });
 

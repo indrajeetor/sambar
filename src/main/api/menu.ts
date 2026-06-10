@@ -58,35 +58,87 @@ export type MenuItemOptions = {
   readonly submenu?: Menu | ReadonlyArray<MenuItemOptions>;
 };
 
-/** Per-role default label, accelerator, and the macOS first-responder selector. */
+/** A Linux GTK window action a role maps to (operated on the activating window). */
+export type MenuWindowAction = 'minimize' | 'close' | 'zoom' | 'togglefullscreen';
+
+/**
+ * Per-role defaults: label, accelerator, the macOS first-responder selector, and the Linux
+ * dispatch — `editingCommand` (a WebKitGTK editing command run on the focused web view) or
+ * `windowAction` (a GTK window op). Roles with neither (quit/about/hide/…) have no Linux
+ * menu-click wiring yet (their keyboard shortcuts still work natively); macOS wires them all.
+ */
 const ROLE_DEFAULTS: Record<
   MenuRole,
-  { label: string; accelerator?: string; macSelector: string }
+  {
+    label: string;
+    accelerator?: string;
+    macSelector: string;
+    editingCommand?: string;
+    windowAction?: MenuWindowAction;
+  }
 > = {
-  undo: { label: 'Undo', accelerator: 'CommandOrControl+Z', macSelector: 'undo:' },
-  redo: { label: 'Redo', accelerator: 'Shift+CommandOrControl+Z', macSelector: 'redo:' },
-  cut: { label: 'Cut', accelerator: 'CommandOrControl+X', macSelector: 'cut:' },
-  copy: { label: 'Copy', accelerator: 'CommandOrControl+C', macSelector: 'copy:' },
-  paste: { label: 'Paste', accelerator: 'CommandOrControl+V', macSelector: 'paste:' },
+  undo: {
+    label: 'Undo',
+    accelerator: 'CommandOrControl+Z',
+    macSelector: 'undo:',
+    editingCommand: 'Undo',
+  },
+  redo: {
+    label: 'Redo',
+    accelerator: 'Shift+CommandOrControl+Z',
+    macSelector: 'redo:',
+    editingCommand: 'Redo',
+  },
+  cut: {
+    label: 'Cut',
+    accelerator: 'CommandOrControl+X',
+    macSelector: 'cut:',
+    editingCommand: 'Cut',
+  },
+  copy: {
+    label: 'Copy',
+    accelerator: 'CommandOrControl+C',
+    macSelector: 'copy:',
+    editingCommand: 'Copy',
+  },
+  paste: {
+    label: 'Paste',
+    accelerator: 'CommandOrControl+V',
+    macSelector: 'paste:',
+    editingCommand: 'Paste',
+  },
   pasteAndMatchStyle: {
     label: 'Paste and Match Style',
     accelerator: 'Option+Shift+CommandOrControl+V',
     macSelector: 'pasteAndMatchStyle:',
+    editingCommand: 'PasteAsPlainText',
   },
-  delete: { label: 'Delete', macSelector: 'delete:' },
-  selectAll: { label: 'Select All', accelerator: 'CommandOrControl+A', macSelector: 'selectAll:' },
+  delete: { label: 'Delete', macSelector: 'delete:', editingCommand: 'Delete' },
+  selectAll: {
+    label: 'Select All',
+    accelerator: 'CommandOrControl+A',
+    macSelector: 'selectAll:',
+    editingCommand: 'SelectAll',
+  },
   minimize: {
     label: 'Minimize',
     accelerator: 'CommandOrControl+M',
     macSelector: 'performMiniaturize:',
+    windowAction: 'minimize',
   },
-  close: { label: 'Close Window', accelerator: 'CommandOrControl+W', macSelector: 'performClose:' },
-  zoom: { label: 'Zoom', macSelector: 'performZoom:' },
+  close: {
+    label: 'Close Window',
+    accelerator: 'CommandOrControl+W',
+    macSelector: 'performClose:',
+    windowAction: 'close',
+  },
+  zoom: { label: 'Zoom', macSelector: 'performZoom:', windowAction: 'zoom' },
   quit: { label: 'Quit', accelerator: 'CommandOrControl+Q', macSelector: 'terminate:' },
   togglefullscreen: {
     label: 'Toggle Full Screen',
     accelerator: 'Control+Command+F',
     macSelector: 'toggleFullScreen:',
+    windowAction: 'togglefullscreen',
   },
   about: { label: 'About', macSelector: 'orderFrontStandardAboutPanel:' },
   hide: { label: 'Hide', accelerator: 'Command+H', macSelector: 'hide:' },
@@ -221,7 +273,17 @@ const toSpec = (item: MenuItem): NativeMenuItemSpec => {
     keyEquivalent: acceleratorKey(item.accelerator),
     ...(mask !== 0n ? { modifierMask: mask } : {}),
     ...(item.role !== undefined
-      ? { role: item.role, roleSelector: ROLE_DEFAULTS[item.role].macSelector }
+      ? {
+          role: item.role,
+          roleSelector: ROLE_DEFAULTS[item.role].macSelector,
+          // Linux dispatch (one or neither): a WebKitGTK editing command or a GTK window op.
+          ...(ROLE_DEFAULTS[item.role].editingCommand !== undefined
+            ? { editingCommand: ROLE_DEFAULTS[item.role].editingCommand }
+            : {}),
+          ...(ROLE_DEFAULTS[item.role].windowAction !== undefined
+            ? { windowAction: ROLE_DEFAULTS[item.role].windowAction }
+            : {}),
+        }
       : {}),
   };
   if (item.type === 'submenu' && item.submenu !== undefined) {

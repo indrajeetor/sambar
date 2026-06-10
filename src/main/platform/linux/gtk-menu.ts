@@ -80,11 +80,19 @@ export type MenuEntry = {
   readonly retained: unknown[];
   /** Count of retained thunks (one per clickable item). */
   readonly retainedCount: number;
+  /** The spec tree this entry was realized from (so a window can re-realize it with role wiring). */
+  readonly specs: ReadonlyArray<NativeMenuItemSpec>;
 };
 
 const menuEntries = new Map<bigint, MenuEntry>();
 
-let currentAppMenu: { readonly model: bigint; readonly group: bigint } | undefined;
+type CurrentAppMenu = {
+  readonly model: bigint;
+  readonly group: bigint;
+  readonly specs: ReadonlyArray<NativeMenuItemSpec>;
+};
+
+let currentAppMenu: CurrentAppMenu | undefined;
 
 let injectedBindings: Bindings | undefined;
 
@@ -155,6 +163,8 @@ type WalkContext = {
   readonly group: bigint;
   readonly actionNames: string[];
   readonly retained: unknown[];
+  /** Per-window role handler; when set, a role item is wired live to it instead of being inert. */
+  readonly dispatchRole?: ((spec: NativeMenuItemSpec) => void) | undefined;
 };
 
 /** Append every spec in `items` to the `model`, wiring actions into the shared context. */
@@ -172,6 +182,25 @@ const appendItems = (
       const child = ctx.b.gMenuNew();
       appendItems(ctx, child, spec.submenu);
       ctx.b.gMenuAppendSubmenu(model, spec.label, child);
+      continue;
+    }
+    // A role item with a per-window dispatcher + a Linux action: wire its activate to the
+    // dispatcher (which runs the editing command / window op on THIS window). Roles without a
+    // Linux action (quit/about/…) or without a dispatcher fall through to the inert-label path.
+    if (
+      spec.role !== undefined &&
+      ctx.dispatchRole !== undefined &&
+      (spec.editingCommand !== undefined || spec.windowAction !== undefined)
+    ) {
+      const name = actionName();
+      const action = ctx.b.gSimpleActionNew(name);
+      ctx.b.gSimpleActionSetEnabled(action, spec.enabled === false ? 0 : 1);
+      const dispatch = ctx.dispatchRole;
+      const retained = ctx.b.connectActivate(action, () => dispatch(spec));
+      ctx.b.gActionMapAddAction(ctx.group, action);
+      ctx.actionNames.push(name);
+      ctx.retained.push(retained);
+      ctx.b.gMenuAppend(model, spec.label, detailedAction(name));
       continue;
     }
     if ((spec.type === 'checkbox' || spec.type === 'radio') && spec.onClick !== undefined) {
@@ -201,22 +230,39 @@ const appendItems = (
   }
 };
 
-/** Build a `GMenu` model + shared `GSimpleActionGroup` for `items`; returns the model handle. */
-const realize = (items: ReadonlyArray<NativeMenuItemSpec>): bigint => {
+/** Build a `GMenu` model + `GSimpleActionGroup` for `items` (optionally role-wired); stores + returns the entry. */
+const realizeCore = (
+  items: ReadonlyArray<NativeMenuItemSpec>,
+  dispatchRole?: (spec: NativeMenuItemSpec) => void,
+): MenuEntry => {
   const b = bindings();
   const model = b.gMenuNew();
   const group = b.gSimpleActionGroupNew();
-  const ctx: WalkContext = { b, group, actionNames: [], retained: [] };
+  const ctx: WalkContext = { b, group, actionNames: [], retained: [], dispatchRole };
   appendItems(ctx, model, items);
-  menuEntries.set(model, {
+  const entry: MenuEntry = {
     model,
     group,
     actionNames: ctx.actionNames,
     retained: ctx.retained,
     retainedCount: ctx.retained.length,
-  });
-  return model;
+    specs: items,
+  };
+  menuEntries.set(model, entry);
+  return entry;
 };
+
+/** Build a shared model + group for `items` (no role wiring); returns the model handle. */
+const realize = (items: ReadonlyArray<NativeMenuItemSpec>): bigint => realizeCore(items).model;
+
+/**
+ * Realize a PER-WINDOW model + group from `items`, wiring role items live to `dispatchRole`
+ * (so their clicks act on that window's own web view / window). Returns the fresh entry.
+ */
+export const realizeForWindow = (
+  items: ReadonlyArray<NativeMenuItemSpec>,
+  dispatchRole: (spec: NativeMenuItemSpec) => void,
+): MenuEntry => realizeCore(items, dispatchRole);
 
 /** Install `menuHandle` as the current application menu (applied to future windows). */
 const setApplicationMenu = (menuHandle: bigint): void => {
@@ -224,7 +270,7 @@ const setApplicationMenu = (menuHandle: bigint): void => {
   if (entry === undefined) {
     throw new Error(`setApplicationMenu: unknown menu handle ${menuHandle}`);
   }
-  currentAppMenu = { model: entry.model, group: entry.group };
+  currentAppMenu = { model: entry.model, group: entry.group, specs: entry.specs };
 };
 
 /** The realized artefacts for a handle, or `undefined`. Used by tests + verification. */
@@ -234,10 +280,10 @@ export const getMenuEntry = (handle: bigint): MenuEntry | undefined => menuEntri
  * The model + action group of the current application menu, or `undefined` if
  * none is set. Read by {@link LinuxWindow} construction to attach a menu bar.
  */
-export const getCurrentAppMenu = (): { model: bigint; group: bigint } | undefined => currentAppMenu;
+export const getCurrentAppMenu = (): CurrentAppMenu | undefined => currentAppMenu;
 
 /** Replace the current application menu state directly. @internal */
-export const setCurrentAppMenu = (menu: { model: bigint; group: bigint } | undefined): void => {
+export const setCurrentAppMenu = (menu: CurrentAppMenu | undefined): void => {
   currentAppMenu = menu;
 };
 

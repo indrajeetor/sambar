@@ -19,7 +19,8 @@ import type {
 } from '../native';
 import { ExecResultChannel } from './eval-js';
 import { loadGtkFFI } from './gtk-ffi';
-import { getCurrentAppMenu } from './gtk-menu';
+import type { NativeMenuItemSpec } from '../macos/cocoa-menu';
+import { getCurrentAppMenu, realizeForWindow } from './gtk-menu';
 import { loadGtkMenuFFI } from './gtk-menu-ffi';
 import { createLinuxDrain } from './gtk-run-loop';
 import {
@@ -308,14 +309,48 @@ class LinuxWindow implements NativeWindow {
       // Default path — unchanged: the webview is the window's sole child.
       gtk.symbols.gtk_window_set_child(this.#window, this.#webContents.view());
     } else {
-      // App-menu path: stack a GtkPopoverMenuBar above the webview in a vertical
-      // box and insert the menu's action group so its items are live.
+      // App-menu path: realize a PER-WINDOW model + action group from the app-menu spec tree,
+      // so role items (Copy/Paste/minimize/…) dispatch onto THIS window's own web view/window.
+      // Then stack a GtkPopoverMenuBar above the webview and insert this window's group.
       const menu = loadGtkMenuFFI();
-      const model = Number(appMenu.model) as unknown as Pointer;
-      const group = Number(appMenu.group) as unknown as Pointer;
+      const view = this.#webContents.view();
+      const win = this.#window;
+      const dispatchRole = (spec: NativeMenuItemSpec): void => {
+        if (this.#closed) {
+          return; // window torn down — its view/window pointers may be freed (use-after-free guard).
+        }
+        if (spec.editingCommand !== undefined) {
+          loadWebKitGtkFFI().symbols.webkit_web_view_execute_editing_command(
+            view,
+            cstr(spec.editingCommand),
+          );
+          return;
+        }
+        if (spec.windowAction === 'minimize') {
+          gtk.symbols.gtk_window_minimize(win);
+        } else if (spec.windowAction === 'close') {
+          this.close();
+        } else if (spec.windowAction === 'zoom') {
+          if (gtk.symbols.gtk_window_is_maximized(win) !== 0) {
+            gtk.symbols.gtk_window_unmaximize(win);
+          } else {
+            gtk.symbols.gtk_window_maximize(win);
+          }
+        } else if (spec.windowAction === 'togglefullscreen') {
+          if (gtk.symbols.gtk_window_is_fullscreen(win) !== 0) {
+            gtk.symbols.gtk_window_unfullscreen(win);
+          } else {
+            gtk.symbols.gtk_window_fullscreen(win);
+          }
+        }
+        // appAction roles (quit/about) are deferred on Linux v1 — a no-op here.
+      };
+      const entry = realizeForWindow(appMenu.specs, dispatchRole);
+      const model = Number(entry.model) as unknown as Pointer;
+      const group = Number(entry.group) as unknown as Pointer;
       const box = menu.symbols.gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
       menu.symbols.gtk_box_append(box, menu.symbols.gtk_popover_menu_bar_new_from_model(model));
-      menu.symbols.gtk_box_append(box, this.#webContents.view());
+      menu.symbols.gtk_box_append(box, view);
       menu.symbols.gtk_widget_insert_action_group(this.#window, cstr('sambar'), group);
       gtk.symbols.gtk_window_set_child(this.#window, box);
     }

@@ -36,6 +36,10 @@ export type NativeMenuItemSpec = {
   readonly role?: string;
   /** The macOS first-responder selector for a role item (e.g. `'copy:'`). */
   readonly roleSelector?: string;
+  /** Linux: a WebKitGTK editing command a role runs on the focused web view (e.g. `'Copy'`). */
+  readonly editingCommand?: string;
+  /** Linux: a GTK window op a role performs (e.g. `'minimize'`). */
+  readonly windowAction?: 'minimize' | 'close' | 'zoom' | 'togglefullscreen';
   readonly submenu?: ReadonlyArray<NativeMenuItemSpec>;
   readonly onClick?: () => void;
 };

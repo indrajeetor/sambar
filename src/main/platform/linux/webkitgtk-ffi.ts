@@ -70,6 +70,12 @@ export const WEBKITGTK_FFI_SYMBOLS = {
     args: [FFIType.pointer],
     returns: FFIType.void,
   },
+  // (web_view, command /*e.g. "Copy","Paste","Cut","SelectAll","Undo","Redo"*/) -> void.
+  // Non-blocking — queues into the web process. Backs Menu edit-role clicks on Linux.
+  webkit_web_view_execute_editing_command: {
+    args: [FFIType.pointer, FFIType.cstring],
+    returns: FFIType.void,
+  },
   webkit_web_view_reload_bypass_cache: {
     args: [FFIType.pointer],
     returns: FFIType.void,
