@@ -88,5 +88,40 @@ if (currentPlatform() === 'linux') {
       expect(image.getSize()).toEqual({ width: 0, height: 0 });
       expect(image.toPNG().length).toBe(0);
     });
+
+    test('gdk-pixbuf-ffi resolves the resize/crop symbols', () => {
+      const pixbuf = loadGdkPixbufFFI();
+      for (const name of [
+        'gdk_pixbuf_scale_simple',
+        'gdk_pixbuf_new_subpixbuf',
+        'gdk_pixbuf_copy',
+      ] as const) {
+        expect(typeof pixbuf.symbols[name]).toBe('function');
+      }
+    });
+
+    test('resize scales a decoded pixbuf to the requested dimensions and round-trips', () => {
+      setNativeImageBackendForTesting(undefined);
+      const img = nativeImage.createFromBuffer(makeTinyPng()).resize({ width: 2, height: 1 });
+      expect(img.getSize()).toEqual({ width: 2, height: 1 });
+      expect(img.toPNG()[0]).toBe(0x89);
+    });
+
+    test('resize width-only preserves aspect ratio (3x2 → 6 → 6x4)', () => {
+      setNativeImageBackendForTesting(undefined);
+      expect(nativeImage.createFromBuffer(makeTinyPng()).resize({ width: 6 }).getSize()).toEqual({
+        width: 6,
+        height: 4,
+      });
+    });
+
+    test('crop returns an independent pixbuf of the sub-rectangle dimensions', () => {
+      setNativeImageBackendForTesting(undefined);
+      const img = nativeImage
+        .createFromBuffer(makeTinyPng())
+        .crop({ x: 1, y: 0, width: 2, height: TINY_PNG_HEIGHT });
+      expect(img.getSize()).toEqual({ width: 2, height: TINY_PNG_HEIGHT });
+      expect(img.toPNG().length).toBeGreaterThan(0); // proves the copy detached + re-encodes
+    });
   });
 }

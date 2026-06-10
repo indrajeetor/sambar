@@ -10,6 +10,7 @@ import {
   msgSendReturnsI64,
 } from './cocoa-msgsend-variants';
 import { cocoa } from './cocoa-runtime';
+import { KCG_ALPHA_PREMULTIPLIED_LAST, loadCoreGraphicsImageFFI } from './core-graphics-image-ffi';
 import { type Handle, ptrIn } from './objc';
 
 /**
@@ -112,6 +113,80 @@ const decodePath = (path: string): DecodedImage => {
 const decodeBuffer = (bytes: Uint8Array): DecodedImage =>
   decodeFromRep(bitmapRepFromData(nsDataFromBytes(bytes)));
 
+/**
+ * Redraw a rep's `CGImage` into a NEW `width`×`height` offscreen bitmap, placing the source
+ * at dest rect `(dx,dy,dw,dh)`, and wrap the result as an `NSBitmapImageRep`. Headless (a
+ * malloc-backed CG bitmap context — no window server). The source `[rep CGImage]` is BORROWED
+ * (not released); the new rep is leaked for the image's lifetime (matching decode); the CG
+ * context / color space / output CGImage temporaries ARE released.
+ */
+const redraw = (
+  handle: NativeImageHandle,
+  width: number,
+  height: number,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+): DecodedImage => {
+  if (handle === 0n) {
+    return EMPTY;
+  }
+  const rt = cocoa();
+  const cg = loadCoreGraphicsImageFFI().symbols;
+  const srcImage = rt.msgSend(handle, rt.selectors.get('CGImage')); // borrowed
+  if (srcImage === 0n) {
+    return EMPTY;
+  }
+  const colorSpace = cg.CGColorSpaceCreateDeviceRGB();
+  if (colorSpace === null) {
+    return EMPTY;
+  }
+  const ctx = cg.CGBitmapContextCreate(
+    null,
+    BigInt(width),
+    BigInt(height),
+    8n,
+    0n,
+    colorSpace,
+    KCG_ALPHA_PREMULTIPLIED_LAST,
+  );
+  if (ctx === null) {
+    cg.CGColorSpaceRelease(colorSpace);
+    return EMPTY;
+  }
+  cg.CGContextDrawImage(ctx, dx, dy, dw, dh, ptrIn(srcImage));
+  const outImage = cg.CGBitmapContextCreateImage(ctx);
+  cg.CGContextRelease(ctx);
+  cg.CGColorSpaceRelease(colorSpace);
+  if (outImage === null) {
+    return EMPTY;
+  }
+  const alloc = rt.msgSend(rt.classes.get('NSBitmapImageRep'), rt.selectors.get('alloc'));
+  const rep = msgSendPtr(alloc, rt.selectors.get('initWithCGImage:'), BigInt(outImage));
+  cg.CGImageRelease(outImage); // initWithCGImage: copies the pixels into the rep.
+  return decodeFromRep(rep);
+};
+
+const resize = (handle: NativeImageHandle, width: number, height: number): DecodedImage =>
+  redraw(handle, width, height, 0, 0, width, height); // scale the whole source to fill the target
+
+const crop = (
+  handle: NativeImageHandle,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): DecodedImage => {
+  const rt = cocoa();
+  const srcW = Number(msgSendReturnsI64(handle, rt.selectors.get('pixelsWide')));
+  const srcH = Number(msgSendReturnsI64(handle, rt.selectors.get('pixelsHigh')));
+  // Draw the full source at native size into the crop-sized context, offset so the top-left
+  // crop window lands at the dest origin. CG uses a BOTTOM-left origin, so y flips:
+  //   top-left (x, y) → CG dest origin (-x, -(srcH - y - height)).
+  return redraw(handle, width, height, -x, -(srcH - y - height), srcW, srcH);
+};
+
 /** macOS implementation of {@link NativeImageBackend}. */
 export const cocoaNativeImageBackend: NativeImageBackend = {
   decode: (source) => (typeof source === 'string' ? decodePath(source) : decodeBuffer(source)),
@@ -154,4 +229,6 @@ export const cocoaNativeImageBackend: NativeImageBackend = {
     );
     return nsDataToBytes(data);
   },
+  resize,
+  crop,
 };

@@ -79,6 +79,21 @@ export const GDK_PIXBUF_FFI_SYMBOLS = {
     args: [FFIType.pointer],
     returns: FFIType.i32,
   },
+  // (src, dest_width, dest_height, GdkInterpType /*BILINEAR=2*/) -> GdkPixbuf* (transfer-full)
+  gdk_pixbuf_scale_simple: {
+    args: [FFIType.pointer, FFIType.i32, FFIType.i32, FFIType.i32],
+    returns: FFIType.pointer,
+  },
+  // (src, x, y, w, h) -> GdkPixbuf* (transfer-full; SHARES the parent's pixels + refs it).
+  gdk_pixbuf_new_subpixbuf: {
+    args: [FFIType.pointer, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32],
+    returns: FFIType.pointer,
+  },
+  // (src) -> GdkPixbuf* (transfer-full; an INDEPENDENT pixel copy — used to detach a subpixbuf).
+  gdk_pixbuf_copy: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
+  },
   // (GdkPixbuf*, gchar** buffer /*out*/, gsize* buffer_size /*out*/, type, char** keys /*null*/, char** vals /*null*/, GError** error) -> gboolean
   gdk_pixbuf_save_to_bufferv: {
     args: [

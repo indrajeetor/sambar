@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
+  clampCropRect,
   type NativeImage,
   type NativeImageBackend,
   type NativeImageHandle,
   nativeImage,
+  resolveResizeDimensions,
   setNativeImageBackendForTesting,
 } from '../../../../src/main/api/native-image';
 
@@ -18,6 +20,14 @@ type Decoded = { handle: NativeImageHandle; width: number; height: number; empty
 let decodeCalls: Array<{ source: string | Uint8Array }>;
 let encodeCalls: NativeImageHandle[];
 let jpegCalls: Array<{ handle: NativeImageHandle; quality: number }>;
+let resizeCalls: Array<{ handle: NativeImageHandle; width: number; height: number }>;
+let cropCalls: Array<{
+  handle: NativeImageHandle;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}>;
 
 const makeFakeBackend = (decoded: Decoded, png: Uint8Array): NativeImageBackend => ({
   decode: (source) => {
@@ -32,12 +42,22 @@ const makeFakeBackend = (decoded: Decoded, png: Uint8Array): NativeImageBackend 
     jpegCalls.push({ handle, quality });
     return new Uint8Array([0xff, 0xd8, 0xff]);
   },
+  resize: (handle, width, height) => {
+    resizeCalls.push({ handle, width, height });
+    return { handle: 100n, width, height, empty: false };
+  },
+  crop: (handle, x, y, width, height) => {
+    cropCalls.push({ handle, x, y, width, height });
+    return { handle: 101n, width, height, empty: false };
+  },
 });
 
 beforeEach(() => {
   decodeCalls = [];
   encodeCalls = [];
   jpegCalls = [];
+  resizeCalls = [];
+  cropCalls = [];
 });
 
 afterEach(() => {
@@ -75,6 +95,63 @@ describe('nativeImage factory', () => {
     expect(image.isEmpty()).toBe(true);
     expect(image.getSize()).toEqual({ width: 0, height: 0 });
     expect(decodeCalls).toHaveLength(0);
+  });
+});
+
+describe('resolveResizeDimensions / clampCropRect (pure)', () => {
+  test('both dims given → rounded as-is; neither → unchanged', () => {
+    expect(resolveResizeDimensions(100, 50, 30, 20)).toEqual({ width: 30, height: 20 });
+    expect(resolveResizeDimensions(100, 50)).toEqual({ width: 100, height: 50 });
+  });
+  test('width only / height only preserve aspect ratio', () => {
+    expect(resolveResizeDimensions(100, 50, 50)).toEqual({ width: 50, height: 25 });
+    expect(resolveResizeDimensions(100, 50, undefined, 25)).toEqual({ width: 50, height: 25 });
+  });
+  test('clamp: partial overflow clamps, fully-outside → undefined', () => {
+    expect(clampCropRect(100, 50, { x: 90, y: 0, width: 50, height: 10 })).toEqual({
+      x: 90,
+      y: 0,
+      width: 10,
+      height: 10,
+    });
+    expect(clampCropRect(100, 50, { x: 200, y: 0, width: 10, height: 10 })).toBeUndefined();
+  });
+});
+
+describe('NativeImage.resize / crop', () => {
+  test('resize with only width preserves aspect ratio and calls the backend', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 1n, width: 100, height: 50, empty: false }, new Uint8Array([1])),
+    );
+    const out = nativeImage.createFromPath('/x.png').resize({ width: 50 });
+    expect(resizeCalls).toEqual([{ handle: 1n, width: 50, height: 25 }]);
+    expect(out.getSize()).toEqual({ width: 50, height: 25 });
+  });
+
+  test('resize of an empty image returns empty without calling the backend', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 0n, width: 0, height: 0, empty: true }, new Uint8Array([1])),
+    );
+    const out = nativeImage.createEmpty().resize({ width: 10, height: 10 });
+    expect(out.isEmpty()).toBe(true);
+    expect(resizeCalls).toEqual([]);
+  });
+
+  test('crop clamps the rect and calls the backend with clamped values', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 7n, width: 100, height: 50, empty: false }, new Uint8Array([1])),
+    );
+    nativeImage.createFromPath('/x.png').crop({ x: 90, y: 0, width: 50, height: 10 });
+    expect(cropCalls).toEqual([{ handle: 7n, x: 90, y: 0, width: 10, height: 10 }]);
+  });
+
+  test('crop fully outside the image yields empty (no backend call)', () => {
+    setNativeImageBackendForTesting(
+      makeFakeBackend({ handle: 7n, width: 100, height: 50, empty: false }, new Uint8Array([1])),
+    );
+    const out = nativeImage.createFromPath('/x.png').crop({ x: 200, y: 0, width: 10, height: 10 });
+    expect(out.isEmpty()).toBe(true);
+    expect(cropCalls).toEqual([]);
   });
 });
 

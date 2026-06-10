@@ -114,6 +114,55 @@ const encode = (handle: NativeImageHandle, type: string): Uint8Array => {
   return copy;
 };
 
+/** `GdkInterpType` BILINEAR — good quality/speed balance for resampling. */
+const GDK_INTERP_BILINEAR = 2;
+
+const resize = (handle: NativeImageHandle, width: number, height: number): DecodedImage => {
+  const pixbuf = handleToPtr(handle);
+  if (pixbuf === null) {
+    return EMPTY;
+  }
+  const pixbufFFI = loadGdkPixbufFFI();
+  const out = pixbufFFI.symbols.gdk_pixbuf_scale_simple(
+    pixbuf as Parameters<typeof pixbufFFI.symbols.gdk_pixbuf_scale_simple>[0],
+    width,
+    height,
+    GDK_INTERP_BILINEAR,
+  );
+  // transfer-full: the new pixbuf is the result image's handle, leaked for its lifetime
+  // exactly like a decoded pixbuf (no finalizer yet — documented above).
+  return decodeFromPixbuf(out === null ? null : Number(out));
+};
+
+const crop = (
+  handle: NativeImageHandle,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): DecodedImage => {
+  const pixbuf = handleToPtr(handle);
+  if (pixbuf === null) {
+    return EMPTY;
+  }
+  const pixbufFFI = loadGdkPixbufFFI();
+  const sub = pixbufFFI.symbols.gdk_pixbuf_new_subpixbuf(
+    pixbuf as Parameters<typeof pixbufFFI.symbols.gdk_pixbuf_new_subpixbuf>[0],
+    x,
+    y,
+    width,
+    height,
+  );
+  if (sub === null) {
+    return EMPTY;
+  }
+  // new_subpixbuf SHARES the parent's pixels + refs it; copy to a fully independent pixbuf,
+  // then unref the transient sub (which releases its parent ref).
+  const copy = pixbufFFI.symbols.gdk_pixbuf_copy(sub);
+  loadGObjectFFI().symbols.g_object_unref(sub);
+  return decodeFromPixbuf(copy === null ? null : Number(copy));
+};
+
 /** Linux implementation of {@link NativeImageBackend}. */
 export const gdkNativeImageBackend: NativeImageBackend = {
   decode: (source) => (typeof source === 'string' ? decodePath(source) : decodeBuffer(source)),
@@ -121,4 +170,6 @@ export const gdkNativeImageBackend: NativeImageBackend = {
   // Linux v1 uses GdkPixbuf's default JPEG quality (the `quality` factor is
   // honored on macOS; option-key arrays for Linux are a follow-up).
   encodeJpeg: (handle: NativeImageHandle): Uint8Array => encode(handle, 'jpeg'),
+  resize,
+  crop,
 };

@@ -79,5 +79,33 @@ if (currentPlatform() === 'macos') {
       expect(image.toPNG().length).toBe(0);
       expect(image.toDataURL()).toBe('data:image/png;base64,');
     });
+
+    test('resize redraws to the requested dimensions and round-trips through the new rep', () => {
+      const img = nativeImage.createFromPath(fixture).resize({ width: 2, height: 1 });
+      expect(img.isEmpty()).toBe(false);
+      expect(img.getSize()).toEqual({ width: 2, height: 1 });
+      expect(img.toPNG()[0]).toBe(0x89); // PNG signature — proves the CG redraw → new rep worked headless
+    });
+
+    test('resize width-only preserves aspect ratio (3x2 → width 6 → 6x4)', () => {
+      expect(nativeImage.createFromBuffer(makeTinyPng()).resize({ width: 6 }).getSize()).toEqual({
+        width: 6,
+        height: 4,
+      });
+    });
+
+    test('crop extracts the requested sub-rectangle dimensions', () => {
+      const img = nativeImage
+        .createFromPath(fixture)
+        .crop({ x: 0, y: 0, width: 2, height: TINY_PNG_HEIGHT });
+      expect(img.getSize()).toEqual({ width: 2, height: TINY_PNG_HEIGHT });
+      expect(img.toPNG().length).toBeGreaterThan(0);
+    });
+
+    test('resize/crop of an empty image stay empty', () => {
+      const empty = nativeImage.createFromPath('/no/such.png');
+      expect(empty.resize({ width: 4, height: 4 }).isEmpty()).toBe(true);
+      expect(empty.crop({ x: 0, y: 0, width: 1, height: 1 }).isEmpty()).toBe(true);
+    });
   });
 }

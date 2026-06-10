@@ -29,7 +29,8 @@ import { gdkNativeImageBackend } from '../platform/linux/gdk-native-image';
  * model): it marks an image as a monochrome template so menu-bar/tray rendering
  * can recolor it for light/dark — the macOS `NSImage setTemplate:` is applied
  * when the image is realized for a `Tray`/menu, not on the decoded rep here.
- * DEFERRED (documented, not stubbed as fake no-ops): `resize`, `crop`,
+ * `resize`/`crop` redraw into a new image (macOS CoreGraphics offscreen bitmap; Linux
+ * GdkPixbuf scale/subpixbuf). DEFERRED (documented, not stubbed as fake no-ops):
  * `getScaleFactors`/`getAspectRatio`, `{ scaleFactor }`.
  */
 
@@ -59,6 +60,53 @@ export type NativeImageBackend = {
   encodePng(handle: NativeImageHandle): Uint8Array;
   /** Encode to JPEG bytes at `quality` (0–100). */
   encodeJpeg(handle: NativeImageHandle, quality: number): Uint8Array;
+  /** Redraw the image at exactly `width`×`height` px into a NEW native image. */
+  resize(handle: NativeImageHandle, width: number, height: number): DecodedImage;
+  /** Copy the sub-rectangle `(x,y,width,height)` into a NEW native image. */
+  crop(
+    handle: NativeImageHandle,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): DecodedImage;
+};
+
+/** Resolve final resize dimensions, preserving aspect ratio when one dimension is omitted. */
+export const resolveResizeDimensions = (
+  srcW: number,
+  srcH: number,
+  width?: number,
+  height?: number,
+): { width: number; height: number } => {
+  const hasW = typeof width === 'number' && width > 0;
+  const hasH = typeof height === 'number' && height > 0;
+  if (hasW && hasH) {
+    return { width: Math.round(width), height: Math.round(height) };
+  }
+  if (hasW) {
+    return { width: Math.round(width), height: Math.max(1, Math.round((width / srcW) * srcH)) };
+  }
+  if (hasH) {
+    return { width: Math.max(1, Math.round((height / srcH) * srcW)), height: Math.round(height) };
+  }
+  return { width: srcW, height: srcH }; // both omitted → unchanged size
+};
+
+/** Clamp a crop rect to the image bounds; `undefined` when the clamped rect is empty. */
+export const clampCropRect = (
+  imgW: number,
+  imgH: number,
+  rect: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } | undefined => {
+  const x = Math.max(0, Math.min(Math.round(rect.x), imgW));
+  const y = Math.max(0, Math.min(Math.round(rect.y), imgH));
+  const width = Math.min(Math.round(rect.width), imgW - x);
+  const height = Math.min(Math.round(rect.height), imgH - y);
+  if (width <= 0 || height <= 0) {
+    return undefined;
+  }
+  return { x, y, width, height };
 };
 
 const DATA_URL_PREFIX = 'data:image/png;base64,';
@@ -113,6 +161,49 @@ export class NativeImage {
   /** The image as a `data:image/png;base64,...` URL (empty payload when empty). */
   toDataURL(): string {
     return `${DATA_URL_PREFIX}${Buffer.from(this.toPNG()).toString('base64')}`;
+  }
+
+  /**
+   * A copy resized to `options.width`×`options.height` (px). Omitting one dimension preserves
+   * aspect ratio; omitting both returns an unchanged-size copy. An empty image resizes to empty.
+   * (`quality` is accepted for Electron compatibility; honored where the backend supports it.)
+   */
+  resize(options: {
+    width?: number;
+    height?: number;
+    quality?: 'good' | 'better' | 'best';
+  }): NativeImage {
+    if (this.#empty) {
+      return new NativeImage(this.#backend, EMPTY_DECODE);
+    }
+    const { width, height } = resolveResizeDimensions(
+      this.#width,
+      this.#height,
+      options.width,
+      options.height,
+    );
+    if (width <= 0 || height <= 0) {
+      return new NativeImage(this.#backend, EMPTY_DECODE);
+    }
+    return new NativeImage(this.#backend, this.#backend.resize(this.#handle, width, height));
+  }
+
+  /**
+   * A copy of the sub-rectangle `rect` (px, top-left origin). A rect that is empty or entirely
+   * outside the image yields an empty image; a partially-overflowing rect is clamped to bounds.
+   */
+  crop(rect: { x: number; y: number; width: number; height: number }): NativeImage {
+    if (this.#empty) {
+      return new NativeImage(this.#backend, EMPTY_DECODE);
+    }
+    const clamped = clampCropRect(this.#width, this.#height, rect);
+    if (clamped === undefined) {
+      return new NativeImage(this.#backend, EMPTY_DECODE);
+    }
+    return new NativeImage(
+      this.#backend,
+      this.#backend.crop(this.#handle, clamped.x, clamped.y, clamped.width, clamped.height),
+    );
   }
 
   /** Mark (or unmark) the image as a template — a monochrome icon the OS recolors for light/dark. */
