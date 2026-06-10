@@ -128,6 +128,76 @@ export const GLIB_FFI_SYMBOLS = {
     args: [FFIType.pointer, FFIType.u64],
     returns: FFIType.pointer,
   },
+  // (value /*gboolean*/) -> GVariant* 'b' (FLOATING).
+  g_variant_new_boolean: {
+    args: [FFIType.i32],
+    returns: FFIType.pointer,
+  },
+  // (value) -> GVariant* 'i' (FLOATING). Width/height for the SNI a(iiay) icon.
+  g_variant_new_int32: {
+    args: [FFIType.i32],
+    returns: FFIType.pointer,
+  },
+  // (object_path) -> GVariant* 'o' (FLOATING). The SNI Menu property.
+  g_variant_new_object_path: {
+    args: [FFIType.cstring],
+    returns: FFIType.pointer,
+  },
+  // (type_string) -> GVariantType* (transfer-full; g_variant_type_free). Builders BORROW it.
+  g_variant_type_new: {
+    args: [FFIType.cstring],
+    returns: FFIType.pointer,
+  },
+  g_variant_type_free: {
+    args: [FFIType.pointer],
+    returns: FFIType.void,
+  },
+  // (type:GVariantType*) -> GVariantBuilder* (heap; g_variant_builder_unref).
+  g_variant_builder_new: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+  // (builder, type:GVariantType*) -> void. Opens a nested container.
+  g_variant_builder_open: {
+    args: [FFIType.pointer, FFIType.pointer],
+    returns: FFIType.void,
+  },
+  g_variant_builder_close: {
+    args: [FFIType.pointer],
+    returns: FFIType.void,
+  },
+  // (builder, value) -> void. SINKS a floating child value.
+  g_variant_builder_add_value: {
+    args: [FFIType.pointer, FFIType.pointer],
+    returns: FFIType.void,
+  },
+  // (builder) -> GVariant* (FLOATING; the built container). Builder must still be unref'd after.
+  g_variant_builder_end: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+  g_variant_builder_unref: {
+    args: [FFIType.pointer],
+    returns: FFIType.void,
+  },
+  // (type, data, size /*gsize*/, trusted /*gboolean*/, notify|null, user_data|null) -> GVariant*
+  //  (FLOATING). With notify=NULL the `data` buffer MUST outlive the variant (retain it).
+  g_variant_new_from_data: {
+    args: [
+      FFIType.pointer,
+      FFIType.pointer,
+      FFIType.u64,
+      FFIType.i32,
+      FFIType.pointer,
+      FFIType.pointer,
+    ],
+    returns: FFIType.pointer,
+  },
+  // (value) -> GVariant*. Sinks a floating ref + adds one full ref (so we OWN the value).
+  g_variant_ref_sink: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
+  },
 } as const;
 
 const cache: { ffi: ReturnType<typeof dlopen<typeof GLIB_FFI_SYMBOLS>> | undefined } = {

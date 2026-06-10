@@ -232,3 +232,68 @@ export const callMethodSync = (
 export const resetSessionBusCacheForTesting = (): void => {
   sessionCache.sessionBus = undefined;
 };
+
+// --- Object export (StatusNotifierItem service) ----------------------------------------
+
+/** Parse D-Bus introspection XML into a `GDBusNodeInfo*` (transfer-full — keep alive forever). */
+export const nodeInfoNewForXml = (xml: string): Pointer | null =>
+  loadGDBusFFI().symbols.g_dbus_node_info_new_for_xml(cstr(xml), null);
+
+/** Look up a borrowed `GDBusInterfaceInfo*` (owned by `node`) by interface name. */
+export const nodeInfoLookupInterface = (node: Pointer, name: string): Pointer | null =>
+  loadGDBusFFI().symbols.g_dbus_node_info_lookup_interface(node, cstr(name));
+
+/**
+ * Export an object on `conn` at `objectPath` for `interfaceInfo`, dispatched through the
+ * `GDBusInterfaceVTable` at `vtablePtr`. Returns the registration id (0 = failure). GDBus
+ * COPIES the vtable and refs the interface info — but the copied vtable holds the RAW
+ * function pointers of the JSCallbacks, so the CALLER must retain those callbacks forever.
+ */
+export const registerObject = (
+  conn: Pointer,
+  objectPath: string,
+  interfaceInfo: Pointer,
+  vtablePtr: Pointer,
+): number =>
+  loadGDBusFFI().symbols.g_dbus_connection_register_object(
+    conn,
+    cstr(objectPath),
+    interfaceInfo,
+    vtablePtr,
+    null,
+    null,
+    null,
+  );
+
+/** Remove a previously-registered object. */
+export const unregisterObject = (conn: Pointer, registrationId: number): void => {
+  loadGDBusFFI().symbols.g_dbus_connection_unregister_object(conn, registrationId);
+};
+
+/** The connection's unique bus name (e.g. `":1.42"`), or null. */
+export const getUniqueName = (conn: Pointer): string | null => {
+  const name = loadGDBusFFI().symbols.g_dbus_connection_get_unique_name(conn);
+  return name === null ? null : name.toString();
+};
+
+/**
+ * Broadcast a signal from `objectPath`/`iface`. `parameters` (a floating GVariant, or null
+ * for an argument-less signal) is CONSUMED.
+ */
+export const emitSignal = (
+  conn: Pointer,
+  objectPath: string,
+  iface: string,
+  signalName: string,
+  parameters: Pointer | null,
+): void => {
+  loadGDBusFFI().symbols.g_dbus_connection_emit_signal(
+    conn,
+    null, // broadcast (no destination)
+    cstr(objectPath),
+    cstr(iface),
+    cstr(signalName),
+    parameters,
+    null,
+  );
+};

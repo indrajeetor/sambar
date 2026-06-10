@@ -59,6 +59,26 @@ export const GDK_PIXBUF_FFI_SYMBOLS = {
     args: [FFIType.pointer],
     returns: FFIType.i32,
   },
+  // (GdkPixbuf*) -> guchar* to the packed pixel rows (BORROWED — owned by the pixbuf).
+  gdk_pixbuf_get_pixels: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+  // (GdkPixbuf*) -> int rowstride (bytes per row; ≥ width*n_channels, often padded).
+  gdk_pixbuf_get_rowstride: {
+    args: [FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  // (GdkPixbuf*) -> int channels (3 = RGB, 4 = RGBA).
+  gdk_pixbuf_get_n_channels: {
+    args: [FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  // (GdkPixbuf*) -> gboolean whether the pixbuf has an alpha channel.
+  gdk_pixbuf_get_has_alpha: {
+    args: [FFIType.pointer],
+    returns: FFIType.i32,
+  },
   // (GdkPixbuf*, gchar** buffer /*out*/, gsize* buffer_size /*out*/, type, char** keys /*null*/, char** vals /*null*/, GError** error) -> gboolean
   gdk_pixbuf_save_to_bufferv: {
     args: [

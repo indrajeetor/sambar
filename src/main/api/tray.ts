@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { UnsupportedPlatformError } from '../../common/errors';
 import { currentPlatform } from '../../common/platform';
-import { linuxTrayBackend } from '../platform/linux/tray-unsupported';
+import { linuxTrayBackend } from '../platform/linux/sni-tray';
 import { macosTrayBackend } from '../platform/macos/cocoa-tray';
 import type { Menu } from './menu';
 
@@ -14,21 +14,22 @@ import type { Menu } from './menu';
  *
  * PLATFORMS:
  * - macOS: real `NSStatusItem`; works un-bundled (`bun main.ts`).
- * - Linux: honestly DEFERRED — constructing a Tray throws
- *   {@link UnsupportedPlatformError}. GTK4 removed `GtkStatusIcon`; the modern
- *   `StatusNotifierItem` (D-Bus) / `libayatana-appindicator` backend is a future
- *   effort. Sambar does NOT stub a no-op that pretends to work.
+ * - Linux: a `StatusNotifierItem` exported over D-Bus (a host like KDE, the GNOME
+ *   AppIndicator extension, Waybar or swaybar draws the icon). Gated behind
+ *   `SAMBAR_ENABLE_LINUX_TRAY`; without it (and in CI) the tray is an inert no-op
+ *   rather than a throw, so cross-platform code constructs a Tray safely. v1 ships
+ *   icon + tooltip + left-click; the context menu (a `com.canonical.dbusmenu`
+ *   service) is DEFERRED, so {@link setContextMenu} is accepted but not yet shown
+ *   on Linux.
  *
- * IMAGE: Sambar has no `nativeImage` yet, so the constructor and {@link setImage}
- * accept a filesystem path string to an icon file. A bad/unreadable path does not
- * crash; the icon is simply not set.
+ * IMAGE: the constructor and {@link setImage} accept a filesystem path string to an
+ * icon file. A bad/unreadable path does not crash; the icon is simply not set.
  *
- * EVENTS: `click` is emitted when the status item is activated (its button
- * action). NOTE: on macOS, when a context menu is set, AppKit consumes the click
- * to present the menu, so `click` fires only when no menu is set — this mirrors
- * Electron's behaviour where a context menu shows on click. `right-click` /
- * `double-click` are DEFERRED (not advertised) until a real event source is
- * wired.
+ * EVENTS: `click` is emitted when the status item is activated. On macOS, when a
+ * context menu is set, AppKit consumes the click to present the menu, so `click`
+ * fires only when no menu is set; on Linux, the host's `Activate` drives `click`.
+ * `right-click` / `double-click` are DEFERRED (not advertised) until a real event
+ * source is wired.
  *
  * The native backend is injectable (mirrors `notification`/`menu`/`screen`) so
  * the class's forwarding and lifecycle are unit-testable with a fake — no FFI.

@@ -52,6 +52,27 @@ export const DBUS_SIGNAL_CB_DEF = {
   returns: 'void',
 } as const;
 
+/** `GDBusInterfaceMethodCallFunc`: (conn, sender, path, iface, method, params, invocation, user_data) -> void. */
+export const DBUS_METHOD_CALL_CB_DEF = {
+  args: ['ptr', 'ptr', 'ptr', 'ptr', 'ptr', 'ptr', 'ptr', 'ptr'],
+  returns: 'void',
+} as const;
+
+/** `GDBusInterfaceGetPropertyFunc`: (conn, sender, path, iface, property, error, user_data) -> GVariant*. */
+export const DBUS_GET_PROPERTY_CB_DEF = {
+  args: ['ptr', 'ptr', 'ptr', 'ptr', 'ptr', 'ptr', 'ptr'],
+  returns: 'ptr',
+} as const;
+
+/** `GDBusInterfaceSetPropertyFunc`: (conn, sender, path, iface, property, value, error, user_data) -> gboolean. */
+export const DBUS_SET_PROPERTY_CB_DEF = {
+  args: ['ptr', 'ptr', 'ptr', 'ptr', 'ptr', 'ptr', 'ptr', 'ptr'],
+  returns: 'i32',
+} as const;
+
+/** `GDBusInterfaceVTable` is `{ method_call; get_property; set_property; gpointer padding[8]; }` = 11 slots. */
+export const VTABLE_SLOTS = 11;
+
 /** The GDBus FFI symbol descriptor table (from `libgio-2.0.so.0`). */
 export const GDBUS_FFI_SYMBOLS = {
   // (bus_type:GBusType, cancellable:GCancellable*|null, error:GError**|null) -> GDBusConnection*
@@ -106,6 +127,61 @@ export const GDBUS_FFI_SYMBOLS = {
       FFIType.pointer,
     ],
     returns: FFIType.pointer,
+  },
+  // --- Object export (StatusNotifierItem service) ---
+  // (xml:cstring, error:GError**|null) -> GDBusNodeInfo* (transfer-full; keep alive forever).
+  g_dbus_node_info_new_for_xml: {
+    args: [FFIType.cstring, FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+  // (node:GDBusNodeInfo*, name:cstring) -> GDBusInterfaceInfo* (BORROWED — owned by the node).
+  g_dbus_node_info_lookup_interface: {
+    args: [FFIType.pointer, FFIType.cstring],
+    returns: FFIType.pointer,
+  },
+  // (conn, object_path, iface_info, vtable:GDBusInterfaceVTable*, user_data|null, free|null,
+  //  error:GError**|null) -> guint reg_id (0 = failure). COPIES the vtable + refs iface_info.
+  g_dbus_connection_register_object: {
+    args: [
+      FFIType.pointer,
+      FFIType.cstring,
+      FFIType.pointer,
+      FFIType.pointer,
+      FFIType.pointer,
+      FFIType.pointer,
+      FFIType.pointer,
+    ],
+    returns: FFIType.u32,
+  },
+  // (conn, registration_id:guint) -> gboolean.
+  g_dbus_connection_unregister_object: {
+    args: [FFIType.pointer, FFIType.u32],
+    returns: FFIType.i32,
+  },
+  // (conn) -> const gchar* unique name (BORROWED; e.g. ":1.42").
+  g_dbus_connection_get_unique_name: {
+    args: [FFIType.pointer],
+    returns: FFIType.cstring,
+  },
+  // (conn, destination|null, object_path, interface_name, signal_name, parameters:GVariant*|null,
+  //  error:GError**|null) -> gboolean. CONSUMES a floating `parameters`.
+  g_dbus_connection_emit_signal: {
+    args: [
+      FFIType.pointer,
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.pointer,
+      FFIType.pointer,
+    ],
+    returns: FFIType.i32,
+  },
+  // (invocation:GDBusMethodInvocation*, parameters:GVariant*|null) -> void. Sinks a floating tuple
+  //  (or NULL for no out-args); takes ownership of the invocation.
+  g_dbus_method_invocation_return_value: {
+    args: [FFIType.pointer, FFIType.pointer],
+    returns: FFIType.void,
   },
 } as const;
 
