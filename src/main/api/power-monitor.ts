@@ -4,6 +4,7 @@ import {
   observePowerEvents as macosObservePowerEvents,
   type PowerEventHandlers,
 } from '../platform/macos/cocoa-power';
+import { observePowerEvents as linuxObservePowerEvents } from '../platform/linux/linux-power-monitor';
 
 /**
  * System power + screen-lock events — a drop-in subset of Electron's
@@ -11,23 +12,22 @@ import {
  *
  * An {@link EventEmitter} (D023) emitting `suspend`, `resume`, `lock-screen` and
  * `unlock-screen`. {@link PowerMonitorImpl.startObserving} (wired once at startup
- * by the bootstrap) attaches the native hooks: on macOS, NSWorkspace sleep/wake
- * + the distributed screen-lock notifications (via the shared observer, D034).
- *
- * Linux is DEFERRED (no events emitted yet, honest rather than faked): logind's
- * `PrepareForSleep` + session `Lock`/`Unlock` are D-Bus signals, which need a
- * GDBus subscription primitive Sambar does not have yet (the same gap that defers
- * the Linux `Tray`). The cross-platform event API exists today; the Linux backend
- * lands with that GDBus work.
+ * by the bootstrap) attaches the native hooks: on macOS, NSWorkspace sleep/wake +
+ * the distributed screen-lock notifications (via the shared observer, D034); on
+ * Linux, systemd-logind's `PrepareForSleep` + session `Lock`/`Unlock` D-Bus signals
+ * over the deadlock-safe GDBus subscription primitive (gated behind
+ * `SAMBAR_ENABLE_LINUX_POWER`; a clean no-op when there is no system bus).
  *
  * Idle-time / on-battery queries (IOKit / UPower) are a separate follow-up.
  */
 
 const observePower = (handlers: PowerEventHandlers): void => {
-  if (currentPlatform() === 'macos') {
+  const platform = currentPlatform();
+  if (platform === 'macos') {
     macosObservePowerEvents(handlers);
+  } else if (platform === 'linux') {
+    linuxObservePowerEvents(handlers);
   }
-  // Linux: deferred — needs a GDBus logind/session subscription (shared with Tray).
 };
 
 export class PowerMonitorImpl extends EventEmitter {

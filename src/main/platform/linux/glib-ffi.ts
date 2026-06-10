@@ -79,6 +79,34 @@ export const GLIB_FFI_SYMBOLS = {
     args: [FFIType.pointer],
     returns: FFIType.void,
   },
+  // (value /*GVariant* boolean 'b'*/) -> gboolean. ABORTS if value is not a boolean —
+  // guard with g_variant_get_type_string first (a native abort is NOT JS-catchable).
+  g_variant_get_boolean: {
+    args: [FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  // (value /*GVariant* container*/) -> gsize child count. Guards get_child_value, which
+  //  ABORTS on an out-of-range index.
+  g_variant_n_children: {
+    args: [FFIType.pointer],
+    returns: FFIType.u64,
+  },
+  // (value) -> const gchar* type string (BORROWED — do NOT free), e.g. "b" for a boolean.
+  g_variant_get_type_string: {
+    args: [FFIType.pointer],
+    returns: FFIType.cstring,
+  },
+  // (value /*GVariant* tuple*/, index_ /*gsize*/) -> GVariant* (transfer-full; caller
+  //  MUST g_variant_unref) — pulls the i-th child out of a tuple (e.g. the `b` from `(b)`).
+  g_variant_get_child_value: {
+    args: [FFIType.pointer, FFIType.u64],
+    returns: FFIType.pointer,
+  },
+  // (value) -> void. Drops a ref on a transfer-full GVariant.
+  g_variant_unref: {
+    args: [FFIType.pointer],
+    returns: FFIType.void,
+  },
 } as const;
 
 const cache: { ffi: ReturnType<typeof dlopen<typeof GLIB_FFI_SYMBOLS>> | undefined } = {
