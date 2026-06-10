@@ -8,6 +8,7 @@ import { ensureNativeStarted } from '../bootstrap';
 import { nativeApp } from '../native-app';
 import type { Rect } from '../platform/native';
 import { app } from './app';
+import { installWindowResolver, type PopupTarget } from './menu';
 import { session } from './session';
 import { WebContents } from './web-contents';
 
@@ -111,6 +112,8 @@ const makeCloseEvent = (): WindowCloseEvent => {
 };
 
 const registry = new Map<number, BrowserWindow>();
+/** Per-window popup targets, so `Menu.popup` can anchor to a window without a menu→window import. */
+const popupTargets = new WeakMap<BrowserWindow, PopupTarget>();
 let nextId = 1;
 
 /** Reset the window registry and id counter. Test-only. */
@@ -145,6 +148,11 @@ export class BrowserWindow extends EventEmitter {
       ...(options.fullscreen !== undefined ? { fullscreen: options.fullscreen } : {}),
     });
     this.webContents = new WebContents(this.#native.webContents);
+    // Expose a popup target so Menu.popup can anchor a context menu to this window.
+    popupTargets.set(this, {
+      popupMenu: (handle, x, y) => this.#native.popupMenu(handle, x, y),
+      closePopupMenu: () => this.#native.closePopupMenu(),
+    });
     // Apply the default session's User-Agent override (if any) before the app's
     // first navigation on this window.
     const sessionUserAgent = session.defaultSession.getUserAgent();
@@ -299,3 +307,22 @@ export class BrowserWindow extends EventEmitter {
     return registry.get(id);
   }
 }
+
+// Let Menu.popup resolve a target window (focused → most-recent) without importing
+// BrowserWindow into menu.ts (which would cycle). The registry is creation-ordered.
+installWindowResolver({
+  focused: () => {
+    for (const window of registry.values()) {
+      if (window.isFocused()) {
+        return popupTargets.get(window);
+      }
+    }
+    return undefined;
+  },
+  mostRecent: () => {
+    const windows = [...registry.values()];
+    const last = windows[windows.length - 1];
+    return last === undefined ? undefined : popupTargets.get(last);
+  },
+  resolve: (window) => (window instanceof BrowserWindow ? popupTargets.get(window) : undefined),
+});

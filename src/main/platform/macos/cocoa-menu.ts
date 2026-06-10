@@ -3,6 +3,7 @@ import {
   msgSendI64,
   msgSendPtr,
   msgSendPtr3,
+  msgSendPtrPointPtrReturnsU8,
   msgSendReturnsI64,
   msgSendU8,
 } from './cocoa-msgsend-variants';
@@ -159,4 +160,28 @@ export const menuItemCount = (menu: Handle): number =>
  */
 export const performMenuItem = (menu: Handle, index: number): void => {
   msgSendI64(menu, cocoa().selectors.get('performActionForItemAtIndex:'), BigInt(index));
+};
+
+/**
+ * Show `menu` as a context menu at content-relative (`x`, `y`) in `view`.
+ *
+ * BLOCKING: `popUpMenuPositioningItem:atLocation:inView:` runs a nested AppKit tracking loop
+ * until the user picks an item or dismisses — the same nested-modal-loop class as the dialog
+ * panels' `runModal` (D020: safe; the crash class was a blocking `runUntilDate:`, not an
+ * AppKit-owned nested loop). Item clicks route through the shared `SambarMenuTarget` registry
+ * exactly as for an application menu. `item = nil` anchors the menu's top-left at the location.
+ */
+export const popUpMenu = (menu: Handle, view: Handle, x: number, y: number): boolean =>
+  msgSendPtrPointPtrReturnsU8(
+    menu,
+    cocoa().selectors.get('popUpMenuPositioningItem:atLocation:inView:'),
+    0n, // item = nil
+    x,
+    y,
+    view,
+  ) === 1;
+
+/** Cancel an in-progress context-menu tracking session (`-[NSMenu cancelTracking]`). */
+export const cancelMenuTracking = (menu: Handle): void => {
+  cocoa().msgSend(menu, cocoa().selectors.get('cancelTracking'));
 };

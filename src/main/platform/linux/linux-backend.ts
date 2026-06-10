@@ -1,4 +1,4 @@
-import type { Pointer } from 'bun:ffi';
+import { type Pointer, ptr } from 'bun:ffi';
 import {
   generateChannelId,
   generateIsolatedChannelSetup,
@@ -20,7 +20,7 @@ import type {
 import { ExecResultChannel } from './eval-js';
 import { loadGtkFFI } from './gtk-ffi';
 import type { NativeMenuItemSpec } from '../macos/cocoa-menu';
-import { getCurrentAppMenu, realizeForWindow } from './gtk-menu';
+import { getCurrentAppMenu, getMenuEntry, realizeForWindow } from './gtk-menu';
 import { loadGtkMenuFFI } from './gtk-menu-ffi';
 import { createLinuxDrain } from './gtk-run-loop';
 import {
@@ -272,6 +272,7 @@ class LinuxWindow implements NativeWindow {
   readonly #defaultWidth: number;
   readonly #defaultHeight: number;
   #closed = false;
+  #activePopover: Pointer | null = null;
   readonly #closedCallbacks: Array<() => void> = [];
   #onClose: (() => boolean) | undefined;
   readonly #eventHandlers = new Map<WindowEventType, () => void>();
@@ -450,6 +451,7 @@ class LinuxWindow implements NativeWindow {
     }
     this.#closed = true;
     this.#visible = false;
+    this.#closeActivePopover(); // drop any open context-menu popover before teardown.
     for (const callback of this.#closedCallbacks) {
       callback();
     }
@@ -603,6 +605,49 @@ class LinuxWindow implements NativeWindow {
 
   onWindowEvent(type: WindowEventType, callback: () => void): void {
     this.#eventHandlers.set(type, callback);
+  }
+
+  popupMenu(menuHandle: bigint, x: number, y: number): void {
+    if (this.#closed) {
+      return;
+    }
+    const entry = getMenuEntry(menuHandle);
+    if (entry === undefined) {
+      return; // unknown handle — nothing to show.
+    }
+    const menu = loadGtkMenuFFI();
+    this.#closeActivePopover(); // replace any open popover.
+    const popover = menu.symbols.gtk_popover_menu_new_from_model(
+      Number(entry.model) as unknown as Pointer,
+    );
+    if (popover === null) {
+      return;
+    }
+    menu.symbols.gtk_widget_set_parent(popover, this.#window);
+    // Insert the menu's action group so its items are live (mirrors the menu-bar path).
+    menu.symbols.gtk_widget_insert_action_group(
+      popover,
+      cstr('sambar'),
+      Number(entry.group) as unknown as Pointer,
+    );
+    // GdkRectangle { x, y, width:1, height:1 } — a 1×1 rect is a point (window-relative coords).
+    menu.symbols.gtk_popover_set_pointing_to(popover, ptr(new Int32Array([x, y, 1, 1])));
+    menu.symbols.gtk_popover_popup(popover); // non-blocking; item activation fires via the pump.
+    this.#activePopover = popover;
+  }
+
+  closePopupMenu(): void {
+    this.#closeActivePopover();
+  }
+
+  #closeActivePopover(): void {
+    if (this.#activePopover === null) {
+      return;
+    }
+    const menu = loadGtkMenuFFI();
+    menu.symbols.gtk_popover_popdown(this.#activePopover);
+    menu.symbols.gtk_widget_unparent(this.#activePopover);
+    this.#activePopover = null;
   }
 }
 

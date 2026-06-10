@@ -142,6 +142,8 @@ const makeFakeWindow = (options: NativeWindowOptions): FakeWindow => {
     onWindowEvent: (type, cb) => {
       eventCallbacks.set(type, cb);
     },
+    popupMenu: () => undefined,
+    closePopupMenu: () => undefined,
     fireClosed: () => onClosed?.(),
     fireEvent: (type) => eventCallbacks.get(type)?.(),
     fireCloseRequest: () => {

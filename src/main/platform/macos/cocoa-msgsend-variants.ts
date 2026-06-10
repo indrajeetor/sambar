@@ -126,6 +126,15 @@ const SIZE_VARIANT = {
   },
 } as const;
 
+// (receiver, selector, ptr, NSPoint{x,y} as two doubles (D018), ptr) -> BOOL.
+// For -[NSMenu popUpMenuPositioningItem:atLocation:inView:].
+const PTR_POINT_PTR_RETURNS_U8_VARIANT = {
+  objc_msgSend: {
+    args: [FFIType.u64, FFIType.u64, FFIType.u64, FFIType.f64, FFIType.f64, FFIType.u64],
+    returns: FFIType.u8,
+  },
+} as const;
+
 const getInitWithContentRectLib = macOSLibraryAccessor('msgSendInitWithContentRect', () =>
   dlopen(LIBOBJC_PATH, INIT_WITH_CONTENT_RECT_VARIANT),
 );
@@ -334,6 +343,26 @@ export const msgSendSize = (
   width: number,
   height: number,
 ): Handle => getSizeLib().symbols.objc_msgSend(receiver, selector, width, height);
+
+const getPtrPointPtrReturnsU8Lib = macOSLibraryAccessor('msgSendPtrPointPtrReturnsU8', () =>
+  dlopen(LIBOBJC_PATH, PTR_POINT_PTR_RETURNS_U8_VARIANT),
+);
+
+/**
+ * Send a message taking a pointer, an `NSPoint` (two `double`s BY VALUE — the
+ * struct-as-doubles trick, D018), then a pointer, returning a `BOOL` — specifically
+ * `-[NSMenu popUpMenuPositioningItem:atLocation:inView:]`. A 2-double homogeneous-FP struct
+ * arg occupies the same registers as two separate doubles (proven by {@link msgSendSize}).
+ */
+export const msgSendPtrPointPtrReturnsU8 = (
+  receiver: Handle,
+  selector: Handle,
+  item: Handle,
+  x: number,
+  y: number,
+  view: Handle,
+): number =>
+  getPtrPointPtrReturnsU8Lib().symbols.objc_msgSend(receiver, selector, item, x, y, view);
 
 const PTR_I64_U8_VARIANT = {
   objc_msgSend: {

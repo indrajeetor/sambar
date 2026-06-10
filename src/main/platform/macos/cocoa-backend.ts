@@ -21,6 +21,7 @@ import { buildExecWrapper } from '../../ipc/exec-wrapper';
 import { DOM_READY_HANDLER_NAME, generateDomReadyScript } from '../dom-ready';
 import { getContentWorld, pageWorld } from './cocoa-content-world';
 import { nsString, nsStringToString } from './cocoa-foundation';
+import { cancelMenuTracking, popUpMenu } from './cocoa-menu';
 import {
   msgSendF64,
   msgSendI64,
@@ -373,6 +374,7 @@ class MacOSWindow implements NativeWindow {
   #tornDown = false;
   #onClosed: (() => void) | undefined;
   #onClose: (() => boolean) | undefined;
+  #activePopupMenu: Handle = 0n;
   readonly #eventHandlers = new Map<WindowEventType, () => void>();
 
   constructor(window: Handle, contents: MacOSWebContents, bounds: Rect, teardown: () => void) {
@@ -534,6 +536,25 @@ class MacOSWindow implements NativeWindow {
 
   onWindowEvent(type: WindowEventType, callback: () => void): void {
     this.#eventHandlers.set(type, callback);
+  }
+
+  popupMenu(menuHandle: bigint, x: number, y: number): void {
+    const view = cocoa().msgSend(this.#window, cocoa().selectors.get('contentView'));
+    if (view === 0n) {
+      return;
+    }
+    this.#activePopupMenu = menuHandle;
+    try {
+      popUpMenu(menuHandle, view, x, y); // BLOCKS until the user picks an item or dismisses.
+    } finally {
+      this.#activePopupMenu = 0n;
+    }
+  }
+
+  closePopupMenu(): void {
+    if (this.#activePopupMenu !== 0n) {
+      cancelMenuTracking(this.#activePopupMenu);
+    }
   }
 }
 

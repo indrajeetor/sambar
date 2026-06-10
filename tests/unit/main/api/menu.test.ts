@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { NativeMenuItemSpec } from '../../../../src/main/platform/macos/cocoa-menu';
+import type { BrowserWindow } from '../../../../src/main/api/browser-window';
 import {
   Menu,
   MenuItem,
   type MenuRealizer,
+  type PopupTarget,
   resetApplicationMenuForTesting,
+  resolvePopupTarget,
   setMenuRealizerForTesting,
+  setWindowResolverForTesting,
 } from '../../../../src/main/api/menu';
 
 let realized: ReadonlyArray<NativeMenuItemSpec> | undefined;
@@ -125,6 +129,75 @@ describe('Menu role realization spec', () => {
     expect(realized?.[0]?.roleSelector).toBe('delete:');
     expect(realized?.[0]?.keyEquivalent).toBe('');
     expect(realized?.[0]?.modifierMask).toBeUndefined();
+  });
+});
+
+describe('Menu.popup target resolution', () => {
+  const makeTarget = (): { target: PopupTarget; calls: Array<{ fn: string; args: unknown[] }> } => {
+    const calls: Array<{ fn: string; args: unknown[] }> = [];
+    return {
+      calls,
+      target: {
+        popupMenu: (h, x, y) => calls.push({ fn: 'popupMenu', args: [h, x, y] }),
+        closePopupMenu: () => calls.push({ fn: 'closePopupMenu', args: [] }),
+      },
+    };
+  };
+
+  afterEach(() => setWindowResolverForTesting(undefined));
+
+  test('uses the explicit window option and forwards the realized handle + coords', () => {
+    const { target, calls } = makeTarget();
+    const sentinel = {} as BrowserWindow;
+    setWindowResolverForTesting({
+      focused: () => undefined,
+      mostRecent: () => undefined,
+      resolve: (w) => (w === sentinel ? target : undefined),
+    });
+    Menu.buildFromTemplate([{ label: 'Cut' }]).popup({ window: sentinel, x: 12, y: 34 });
+    expect(calls).toEqual([{ fn: 'popupMenu', args: [1n, 12, 34] }]);
+  });
+
+  test('falls back to focused (then most-recent); x/y default to 0', () => {
+    const focused = makeTarget();
+    setWindowResolverForTesting({
+      focused: () => focused.target,
+      mostRecent: () => undefined,
+      resolve: () => undefined,
+    });
+    Menu.buildFromTemplate([{ label: 'X' }]).popup();
+    expect(focused.calls[0]?.fn).toBe('popupMenu');
+    expect(focused.calls[0]?.args.slice(1)).toEqual([0, 0]);
+  });
+
+  test('throws when no window option and no open window', () => {
+    setWindowResolverForTesting({
+      focused: () => undefined,
+      mostRecent: () => undefined,
+      resolve: () => undefined,
+    });
+    expect(() => Menu.buildFromTemplate([{ label: 'X' }]).popup()).toThrow(/no open window/);
+  });
+
+  test('resolvePopupTarget throws when the given window is unknown', () => {
+    expect(() =>
+      resolvePopupTarget(
+        { window: {} as BrowserWindow },
+        { focused: () => undefined, mostRecent: () => undefined, resolve: () => undefined },
+      ),
+    ).toThrow(/not an open/);
+  });
+
+  test('closePopup(window) routes to that window target', () => {
+    const { target, calls } = makeTarget();
+    const w = {} as BrowserWindow;
+    setWindowResolverForTesting({
+      focused: () => undefined,
+      mostRecent: () => undefined,
+      resolve: (x) => (x === w ? target : undefined),
+    });
+    Menu.buildFromTemplate([{ label: 'X' }]).closePopup(w);
+    expect(calls).toEqual([{ fn: 'closePopupMenu', args: [] }]);
   });
 });
 

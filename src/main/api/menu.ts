@@ -1,5 +1,6 @@
-import { UnsupportedPlatformError } from '../../common/errors';
+import { InvalidArgumentError, SambarError, UnsupportedPlatformError } from '../../common/errors';
 import { currentPlatform } from '../../common/platform';
+import type { BrowserWindow } from './browser-window';
 import { linuxMenuRealizer } from '../platform/linux/gtk-menu';
 import type { NativeMenuItemSpec } from '../platform/macos/cocoa-menu';
 import * as cocoaMenu from '../platform/macos/cocoa-menu';
@@ -298,9 +299,73 @@ const toSpec = (item: MenuItem): NativeMenuItemSpec => {
   return base;
 };
 
+/** Options for {@link Menu.popup} (Electron's `PopupOptions`). */
+export type MenuPopupOptions = {
+  /** Window to anchor the popup to. Defaults to the focused, else most-recent, window. */
+  readonly window?: BrowserWindow;
+  /** X coordinate (content-relative). Defaults to 0 in v1 (NOT the mouse position). */
+  readonly x?: number;
+  /** Y coordinate (content-relative). Defaults to 0 in v1 (NOT the mouse position). */
+  readonly y?: number;
+};
+
+/** The popup-capable subset of a native window the menu seam drives. */
+export type PopupTarget = {
+  popupMenu(menuHandle: bigint, x: number, y: number): void;
+  closePopupMenu(): void;
+};
+
+/**
+ * How {@link Menu.popup} finds its target window. Injected by the BrowserWindow module at
+ * load (which alone can see the window registry), so `menu.ts` needs no runtime import of
+ * `browser-window` — avoiding an import cycle. Replaceable for tests.
+ */
+export type WindowResolver = {
+  /** The focused window's popup target, or undefined. */
+  focused(): PopupTarget | undefined;
+  /** The most-recently-created window's popup target, or undefined. */
+  mostRecent(): PopupTarget | undefined;
+  /** Resolve an explicit window object to its popup target, or undefined if not a known window. */
+  resolve(window: unknown): PopupTarget | undefined;
+};
+
+let windowResolver: WindowResolver | undefined;
+
+/** Wire the window resolver. Called once at bootstrap by the BrowserWindow module. */
+export const installWindowResolver = (resolver: WindowResolver): void => {
+  windowResolver = resolver;
+};
+
+/** Override the window resolver. Test-only. */
+export const setWindowResolverForTesting = (fake: WindowResolver | undefined): void => {
+  windowResolver = fake;
+};
+
+/** Resolve the popup target per the v1 policy (explicit → focused → most-recent → throw). @internal */
+export const resolvePopupTarget = (
+  options: MenuPopupOptions | undefined,
+  resolver: WindowResolver,
+): PopupTarget => {
+  if (options?.window !== undefined) {
+    const target = resolver.resolve(options.window);
+    if (target === undefined) {
+      throw new InvalidArgumentError('Menu.popup: the given window is not an open BrowserWindow');
+    }
+    return target;
+  }
+  const target = resolver.focused() ?? resolver.mostRecent();
+  if (target === undefined) {
+    throw new InvalidArgumentError(
+      'Menu.popup: no window option and no open window to anchor the popup',
+    );
+  }
+  return target;
+};
+
 export class Menu {
   /** The items in this menu, in order. */
   readonly items: MenuItem[] = [];
+  #popupTarget: PopupTarget | undefined;
 
   /** Append an item to the end of the menu. */
   append(item: MenuItem): void {
@@ -332,6 +397,37 @@ export class Menu {
   /** The current application menu, or `null` if none is set. */
   static getApplicationMenu(): Menu | null {
     return applicationMenu;
+  }
+
+  /**
+   * Show this menu as a context/popup menu — Electron's `menu.popup({ window?, x?, y? })`.
+   * Realizes the menu and shows it anchored to the target window (the `window` option, else
+   * the focused window, else the most-recently-created window). `x`/`y` are content-relative
+   * and default to the top-left in v1 (not the mouse position).
+   *
+   * macOS BLOCKS (AppKit runs a nested tracking loop until dismissed — the same nested-loop
+   * class as a modal dialog's `runModal`, D020-safe); Linux is non-blocking.
+   */
+  popup(options?: MenuPopupOptions): void {
+    if (windowResolver === undefined) {
+      throw new SambarError('Menu.popup is unavailable: no window backend installed');
+    }
+    const target = resolvePopupTarget(options, windowResolver);
+    this.#popupTarget = target;
+    target.popupMenu(this.realize(), options?.x ?? 0, options?.y ?? 0);
+  }
+
+  /**
+   * Close this popup menu — Electron's `menu.closePopup(window?)`. macOS cancels menu
+   * tracking (meaningful only re-entrantly, e.g. from an item's own click, since `popup`
+   * blocks until dismissal); Linux pops the popover down.
+   */
+  closePopup(window?: BrowserWindow): void {
+    const target =
+      window !== undefined
+        ? windowResolver?.resolve(window)
+        : (this.#popupTarget ?? windowResolver?.focused());
+    target?.closePopupMenu();
   }
 }
 

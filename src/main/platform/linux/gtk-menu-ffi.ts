@@ -107,6 +107,22 @@ export const GTK_MENU_FFI_SYMBOLS = {
     args: [FFIType.pointer, FFIType.cstring, FFIType.pointer],
     returns: FFIType.void,
   },
+  // --- Context-menu popover (Menu.popup) ---
+  // (model /*GMenuModel*/) -> GtkPopoverMenu* (a GtkPopover/GtkWidget)
+  gtk_popover_menu_new_from_model: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+  // (popover, rect /*const GdkRectangle**/) -> void; rect is in the PARENT widget's coords.
+  gtk_popover_set_pointing_to: {
+    args: [FFIType.pointer, FFIType.pointer],
+    returns: FFIType.void,
+  },
+  gtk_popover_popup: { args: [FFIType.pointer], returns: FFIType.void },
+  gtk_popover_popdown: { args: [FFIType.pointer], returns: FFIType.void },
+  // (widget, parent) -> void / (widget) -> void
+  gtk_widget_set_parent: { args: [FFIType.pointer, FFIType.pointer], returns: FFIType.void },
+  gtk_widget_unparent: { args: [FFIType.pointer], returns: FFIType.void },
 } as const;
 
 const cache: {

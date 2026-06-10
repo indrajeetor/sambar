@@ -173,6 +173,16 @@ export interface NativeWindow {
    * allow it, after which the backend runs teardown and fires `onClosed`.
    */
   onClose(callback: () => boolean): void;
+  /**
+   * Show `menuHandle` (a realized native menu) as a context menu anchored to this
+   * window at content-relative (`x`, `y`). macOS: BLOCKING — runs AppKit's nested
+   * menu-tracking loop until dismissed (the same nested-loop class as the modal
+   * dialogs, D020-safe). Linux: non-blocking — the popover shows and item
+   * activation arrives later via the cooperative pump.
+   */
+  popupMenu(menuHandle: bigint, x: number, y: number): void;
+  /** Dismiss a context menu shown by {@link popupMenu}. Idempotent / best-effort. */
+  closePopupMenu(): void;
 }
 
 /**
