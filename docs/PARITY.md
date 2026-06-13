@@ -1,19 +1,28 @@
 # Electron API parity
 
 Sambar implements Electron's **main-process** API on macOS and Linux in pure
-`bun:ffi` (the renderer side is the system WebView). Parity is roughly **70–75%**
+`bun:ffi` (the renderer side is the system WebView). Parity is roughly **75–80%**
 by weighted real-app surface; the architectural core is complete on **both**
-platforms. This page tracks module-by-module status and what is still pending.
+platforms, and the full init → dev → build → update distribution loop ships. This
+page tracks module-by-module status and what is still pending.
 
 ## Implemented modules
 
-`app` · `BrowserWindow` · `webContents` · `ipcMain` · `clipboard` · `dialog` ·
-`globalShortcut` · `Menu` / `MenuItem` · `nativeImage` · `nativeTheme` ·
+`app` · `autoUpdater` · `BrowserWindow` · `webContents` · `ipcMain` · `clipboard` ·
+`dialog` · `globalShortcut` · `Menu` / `MenuItem` · `nativeImage` · `nativeTheme` ·
 `Notification` · `powerMonitor` · `powerSaveBlocker` · `protocol` · `safeStorage` ·
 `screen` · `session` · `shell` · `Tray`
 
 Renderer side: `ipcRenderer` + `contextBridge` (context isolation via a dedicated
 isolated world).
+
+## CLI + distribution
+
+`sambar init` scaffolds a project, `sambar dev` runs it with file-watch restart,
+`sambar build` packages a macOS `.app`/`.dmg` or Linux AppDir/`.deb`, and
+`sambar build --update` also emits the auto-update feed (`<name>-<channel>-<os>-<arch>.tar.zst`
++ `update.json`) that the runtime `autoUpdater` consumes. Projects are configured
+via `sambar.config.ts` (`defineConfig`).
 
 ## Platform notes
 
@@ -35,20 +44,21 @@ Chromium-internal or Windows-only surfaces are out of scope by design:
 `desktopCapturer`, `net`/`netLog`, `crashReporter`, `contentTracing`,
 `session.webRequest`/proxy, offscreen rendering, Chromium-internal `webContents`
 events, `BrowserView`/`WebContentsView` (Sambar is single-process), `utilityProcess`,
-`TouchBar`, `inAppPurchase`, and all Windows-only members. `autoUpdater` is planned
-(packaging already exists). `systemPreferences` / `pushNotifications` are deferred.
+`TouchBar`, `inAppPurchase`, and all Windows-only members.
+`systemPreferences` / `pushNotifications` are deferred.
 
 ## Pending (the next-tier roadmap)
 
 Method-level depth inside implemented modules, in rough priority:
 
-- **BrowserWindow** runtime setters: `setBounds`/`setPosition`/`getPosition`/`center`/
-  `setResizable`/`setMinimumSize`/`setMaximumSize`/`setContentSize`/`setOpacity`/
-  `setIcon` + `will-resize`/`resized`/`move`/`enter`–`leave-full-screen` events.
-  (Linux `setPosition` is a documented Wayland no-op.)
-- **webContents**: `capturePage()`, `printToPDF()`, devtools toggles
-  (`toggleDevTools`/`isDevToolsOpened`), `isDestroyed`, `page-title-updated`,
-  per-instance `ipc`.
+- **BrowserWindow**: `setBounds`/`setPosition`/`getPosition` (needs macOS
+  screen-coordinate handling) + `setMaximumSize`/`setContentSize`/`setIcon` and
+  `will-resize`/`resized`/`move`/`enter`–`leave-full-screen` events.
+  *(Done: `setResizable`/`isResizable`, `setOpacity`/`getOpacity`,
+  `setMinimumSize`/`getMinimumSize`, `getSize`, `center`.)*
+- **webContents**: `capturePage()`, `printToPDF()`, `page-title-updated`,
+  per-instance `ipc`. *(Done: `toggleDevTools`/`closeDevTools`/`isDevToolsOpened`,
+  `isDestroyed`.)*
 - **session**: `cookies` (get/set/remove), `clearCache`/`clearStorageData`.
 - **dialog**: `showMessageBox` options (`type`, `defaultId`, `cancelId`, `title`,
   checkbox) + window-modal sheet.
@@ -57,8 +67,7 @@ Method-level depth inside implemented modules, in rough priority:
   + view roles; `MenuItem.visible`.
 - **nativeTheme**: `prefersReducedTransparency` (+ macOS high-contrast/inverted).
 - **powerMonitor**: `getSystemIdleTime`, `isOnBatteryPower`.
-- **autoUpdater**: full-download self-update (packaging exists; updater is next).
-
-Renderer/distribution roadmap (the "complete framework" leap): `sambar init`
-scaffold, `sambar dev` file-watch, a `sambar.config.ts` manifest, and the
-auto-updater.
+- **autoUpdater**: an OS-deterministic default installer for `quitAndInstall`
+  (the check/download/verify/stage engine + Electron-shaped events already ship;
+  the swap step is currently experimental). Preload **bundling** so preloads can
+  use `import`/TypeScript instead of the injected `__sambar`/`contextBridge` globals.
