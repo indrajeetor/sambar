@@ -47,7 +47,7 @@ describe('initTemplateFiles', () => {
       'package.json',
       'sambar.config.ts',
       'src/main.ts',
-      'src/preload.ts',
+      'src/preload.js',
       'src/index.html',
       '.gitignore',
       'README.md',

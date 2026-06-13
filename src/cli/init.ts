@@ -62,7 +62,7 @@ const createWindow = (): void => {
     height: 680,
     title: ${JSON.stringify(vars.name)},
     webPreferences: {
-      preload: join(import.meta.dir, 'preload.ts'),
+      preload: join(import.meta.dir, 'preload.js'),
     },
   });
   win.loadFile(join(import.meta.dir, 'index.html'));
@@ -78,13 +78,14 @@ app.on('window-all-closed', () => {
 });
 `;
 
-const preloadTs = (): string =>
-  `import { contextBridge, ipcRenderer } from 'sambar/renderer';
-
-// Expose a controlled, async surface to the page's main world. The page can
-// call window.api.ping(); it cannot reach ipcRenderer or Node directly.
+const preloadJs = (): string =>
+  `// Runs in Sambar's isolated preload world (Electron contextIsolation). It is
+// injected verbatim — keep it plain JS. Two globals are available here:
+//   contextBridge.exposeInMainWorld(key, api)  — expose a safe surface to the page
+//   __sambar.invoke(channel, ...args)          — call an ipcMain.handle handler
+// The page can then call window.api.ping(); it cannot reach Node or the bridge.
 contextBridge.exposeInMainWorld('api', {
-  ping: (): Promise<unknown> => ipcRenderer.invoke('ping'),
+  ping: () => __sambar.invoke('ping'),
 });
 `;
 
@@ -175,7 +176,7 @@ export const initTemplateFiles = (vars: TemplateVars): readonly ScaffoldFile[] =
   { path: 'package.json', contents: packageJson(vars) },
   { path: 'sambar.config.ts', contents: configTs(vars) },
   { path: 'src/main.ts', contents: mainTs(vars) },
-  { path: 'src/preload.ts', contents: preloadTs() },
+  { path: 'src/preload.js', contents: preloadJs() },
   { path: 'src/index.html', contents: indexHtml(vars) },
   { path: '.gitignore', contents: gitignore() },
   { path: 'README.md', contents: readme(vars) },
