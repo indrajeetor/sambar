@@ -45,7 +45,7 @@ const NS_BITMAP_IMAGE_FILE_TYPE_JPEG = 3n;
 const EMPTY: DecodedImage = { handle: 0n, width: 0, height: 0, empty: true };
 
 /** Copy an `NSData`'s bytes out into an owned `Uint8Array` (empty when nil/empty). */
-const nsDataToBytes = (data: Handle): Uint8Array => {
+export const nsDataToBytes = (data: Handle): Uint8Array => {
   if (data === 0n) {
     return new Uint8Array(0);
   }
@@ -63,7 +63,7 @@ const nsDataToBytes = (data: Handle): Uint8Array => {
 };
 
 /** `[[NSData alloc] initWithBytes:length:]` from a Uint8Array (copies the bytes). */
-const nsDataFromBytes = (bytes: Uint8Array): Handle => {
+export const nsDataFromBytes = (bytes: Uint8Array): Handle => {
   const rt = cocoa();
   const alloc = rt.msgSend(rt.classes.get('NSData'), rt.selectors.get('alloc'));
   const dataPtr = bytes.length === 0 ? 0n : BigInt(ptr(bytes));

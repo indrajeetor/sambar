@@ -2,6 +2,7 @@ import { UnsupportedPlatformError } from '../../common/errors';
 import { currentPlatform } from '../../common/platform';
 import { linuxClipboardBackend } from '../platform/linux/gtk-clipboard';
 import * as macosClipboard from '../platform/macos/cocoa-clipboard';
+import { type NativeImage, nativeImage } from './native-image';
 
 /**
  * System clipboard access — the drop-in equivalent of Electron's `clipboard`.
@@ -26,6 +27,12 @@ export type Clipboard = {
   readHTML(): Promise<string>;
   /** Replace the clipboard's contents with `markup` as HTML. */
   writeHTML(markup: string): void;
+  /** Read the clipboard's image (an empty {@link NativeImage} if it holds none). */
+  readImage(): Promise<NativeImage>;
+  /** Replace the clipboard's contents with `image` (written as PNG). */
+  writeImage(image: NativeImage): void;
+  /** The format names (MIME types) currently on the clipboard. */
+  availableFormats(): string[];
   /** Clear the clipboard. */
   clear(): void;
 };
@@ -43,6 +50,12 @@ export type ClipboardBackend = {
   writeText(text: string): void;
   readHTML(): string | Promise<string>;
   writeHTML(markup: string): void;
+  /** PNG image bytes, or an empty array if the clipboard holds no image. */
+  readImage(): Uint8Array | Promise<Uint8Array>;
+  /** Write PNG image `bytes` to the clipboard. */
+  writeImage(bytes: Uint8Array): void;
+  /** The MIME format names currently on the clipboard. */
+  availableFormats(): string[];
   clear(): void;
 };
 
@@ -51,6 +64,9 @@ const macosBackend: ClipboardBackend = {
   writeText: (text) => macosClipboard.writeText(text),
   readHTML: () => macosClipboard.readHTML(),
   writeHTML: (markup) => macosClipboard.writeHTML(markup),
+  readImage: () => macosClipboard.readImage(),
+  writeImage: (bytes) => macosClipboard.writeImage(bytes),
+  availableFormats: () => macosClipboard.availableFormats(),
   clear: () => macosClipboard.clear(),
 };
 
@@ -88,6 +104,17 @@ export const clipboard: Clipboard = {
   },
   writeHTML(markup) {
     getBackend().writeHTML(markup);
+  },
+  readImage() {
+    return Promise.resolve(getBackend().readImage()).then((png) =>
+      png.length === 0 ? nativeImage.createEmpty() : nativeImage.createFromBuffer(png),
+    );
+  },
+  writeImage(image) {
+    getBackend().writeImage(image.toPNG());
+  },
+  availableFormats() {
+    return getBackend().availableFormats();
   },
   clear() {
     getBackend().clear();

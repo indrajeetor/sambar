@@ -6,6 +6,7 @@ import {
   clipboard,
   setClipboardBackendForTesting,
 } from '../../../../src/main/api/clipboard';
+import { nativeImage } from '../../../../src/main/api/native-image';
 
 /** A backend fake with every method as a benign default; override per test. */
 const makeFakeBackend = (overrides: Partial<ClipboardBackend> = {}): ClipboardBackend => ({
@@ -13,6 +14,9 @@ const makeFakeBackend = (overrides: Partial<ClipboardBackend> = {}): ClipboardBa
   writeText: () => undefined,
   readHTML: () => Promise.resolve(''),
   writeHTML: () => undefined,
+  readImage: () => new Uint8Array(0),
+  writeImage: () => undefined,
+  availableFormats: () => [],
   clear: () => undefined,
   ...overrides,
 });
@@ -72,6 +76,36 @@ describe('clipboard API with an injected backend (async readText contract)', () 
   test('readHTML flattens a synchronously-returned string from the backend', async () => {
     setClipboardBackendForTesting(makeFakeBackend({ readHTML: () => '<i>sync</i>' }));
     expect(await clipboard.readHTML()).toBe('<i>sync</i>');
+  });
+
+  test('writeImage hands the image PNG bytes to the backend', () => {
+    const writes: Uint8Array[] = [];
+    setClipboardBackendForTesting(
+      makeFakeBackend({
+        writeImage: (bytes) => {
+          writes.push(bytes);
+        },
+      }),
+    );
+    const png = nativeImage.createFromDataURL(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    );
+    clipboard.writeImage(png);
+    // The API hands the backend exactly the image's PNG bytes.
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toEqual(png.toPNG());
+  });
+
+  test('readImage resolves an empty image when the clipboard holds no image', async () => {
+    setClipboardBackendForTesting(makeFakeBackend({ readImage: () => new Uint8Array(0) }));
+    expect((await clipboard.readImage()).isEmpty()).toBe(true);
+  });
+
+  test('availableFormats delegates to the backend', () => {
+    setClipboardBackendForTesting(
+      makeFakeBackend({ availableFormats: () => ['text/plain', 'image/png'] }),
+    );
+    expect(clipboard.availableFormats()).toEqual(['text/plain', 'image/png']);
   });
 
   test('writeHTML delegates synchronously to the backend', () => {

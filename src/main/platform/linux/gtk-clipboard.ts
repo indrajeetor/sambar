@@ -54,6 +54,8 @@ export const CLIPBOARD_READ_CB_DEF = { args: ['ptr', 'ptr', 'ptr'], returns: 'vo
 const TEXT_MIME = 'text/plain;charset=utf-8';
 /** The MIME type for HTML markup on the clipboard. */
 const HTML_MIME = 'text/html';
+/** The MIME type for PNG image data on the clipboard. */
+const IMAGE_PNG_MIME = 'image/png';
 
 /** Bytes per `g_input_stream_read_bytes_async` call when draining a clipboard stream. */
 const STREAM_CHUNK_SIZE = 65536;
@@ -130,7 +132,7 @@ export type AsyncStreamReader = {
  * read is ever in flight. `reader.close()` runs in a `finally`, so the stream is
  * released on every terminal path (EOF, the cap, or a thrown read).
  */
-export const drainStreamAsync = async (reader: AsyncStreamReader): Promise<string> => {
+export const drainStreamBytesAsync = async (reader: AsyncStreamReader): Promise<Uint8Array> => {
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
@@ -145,16 +147,22 @@ export const drainStreamAsync = async (reader: AsyncStreamReader): Promise<strin
   } finally {
     reader.close();
   }
-  // Concatenate bytes BEFORE decoding so a multibyte char split across a chunk
-  // boundary still decodes correctly.
   const out = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
     out.set(chunk, offset);
     offset += chunk.length;
   }
-  return new TextDecoder().decode(out);
+  return out;
 };
+
+/**
+ * Drain `reader` fully into a UTF-8 string (capped by {@link MAX_STREAM_CHUNKS}).
+ * Concatenates bytes BEFORE decoding so a multibyte char split across a chunk
+ * boundary still decodes correctly.
+ */
+export const drainStreamAsync = async (reader: AsyncStreamReader): Promise<string> =>
+  new TextDecoder().decode(await drainStreamBytesAsync(reader));
 
 /** Settle inputs for `gdk_clipboard_read_finish`, with finish + async drain injectable. */
 export type SettleReadStreamArgs = {
@@ -178,6 +186,26 @@ export const settleReadStreamAsync = async (args: SettleReadStreamArgs): Promise
     return '';
   }
   return stream === null ? '' : args.drain(stream);
+};
+
+/** Settle inputs for a binary `gdk_clipboard_read_finish`, draining to raw bytes. */
+export type SettleReadStreamBytesArgs = {
+  readonly result: Pointer;
+  readonly finish: (result: Pointer) => Pointer | null;
+  readonly drain: (stream: Pointer) => Promise<Uint8Array>;
+};
+
+/** Like {@link settleReadStreamAsync} but yields raw bytes (empty on no-match/error). */
+export const settleReadStreamBytesAsync = async (
+  args: SettleReadStreamBytesArgs,
+): Promise<Uint8Array> => {
+  let stream: Pointer | null;
+  try {
+    stream = args.finish(args.result);
+  } catch {
+    return new Uint8Array(0);
+  }
+  return stream === null ? new Uint8Array(0) : args.drain(stream);
 };
 
 /**
@@ -277,15 +305,12 @@ const readText = (): Promise<string> => {
   });
 };
 
-/** Install `text` on the clipboard under `mime` via a `GdkContentProvider`. */
-const writeBytesAs = (mime: string, text: string): void => {
+/** Install raw `bytes` on the clipboard under `mime` via a `GdkContentProvider`. */
+const writeBytes = (mime: string, bytes: Uint8Array): void => {
   const gdk = loadGdkFFI();
   const glib = loadGlibFFI();
   const clipboard = getClipboard();
-  // Exact UTF-8 bytes (no trailing NUL — GBytes carries an explicit length).
-  // `g_bytes_new` copies, so `bytes` need only outlive that call; keep it
-  // referenced until then.
-  const bytes = new TextEncoder().encode(text);
+  // `g_bytes_new` copies, so `bytes` need only outlive that call.
   const gbytes = glib.symbols.g_bytes_new(ptr(bytes), bytes.length);
   if (gbytes === null) {
     throw new Error('g_bytes_new() returned null');
@@ -300,9 +325,15 @@ const writeBytesAs = (mime: string, text: string): void => {
   gdk.symbols.gdk_clipboard_set_content(clipboard, provider);
 };
 
+/** Install `text` on the clipboard under `mime` (exact UTF-8 bytes, no trailing NUL). */
+const writeBytesAs = (mime: string, text: string): void =>
+  writeBytes(mime, new TextEncoder().encode(text));
+
 const writeText = (text: string): void => writeBytesAs(TEXT_MIME, text);
 
 const writeHTML = (markup: string): void => writeBytesAs(HTML_MIME, markup);
+
+const writeImage = (png: Uint8Array): void => writeBytes(IMAGE_PNG_MIME, png);
 
 const readHTML = (): Promise<string> => {
   const gdk = loadGdkFFI();
@@ -337,17 +368,73 @@ const readHTML = (): Promise<string> => {
   });
 };
 
+const readImage = (): Promise<Uint8Array> => {
+  const gdk = loadGdkFFI();
+  const clipboard = getClipboard();
+  return new Promise<Uint8Array>((resolve) => {
+    // NUL-terminated array of mime-type C strings: ["image/png", NULL].
+    const mime = new TextEncoder().encode(`${IMAGE_PNG_MIME}\0`);
+    const mimeArray = new BigUint64Array([BigInt(ptr(mime)), 0n]);
+    const callback = new JSCallback((_source: Pointer, result: Pointer, _userData: Pointer) => {
+      void settleReadStreamBytesAsync({
+        result,
+        finish: (r) => gdk.symbols.gdk_clipboard_read_finish(clipboard, r, null, null),
+        drain: (stream) => drainStreamBytesAsync(realAsyncStreamReader(stream)),
+      }).then(resolve);
+      setTimeout(() => {
+        inFlight.delete(callback);
+        retainedReadBuffers.delete(callback);
+        callback.close();
+      }, 0);
+    }, CLIPBOARD_READ_CB_DEF);
+    inFlight.add(callback);
+    retainedReadBuffers.set(callback, { mime, mimeArray });
+    const cbPtr = callback.ptr;
+    if (cbPtr === null) {
+      inFlight.delete(callback);
+      retainedReadBuffers.delete(callback);
+      throw new Error(
+        'Failed to allocate a GAsyncReadyCallback thunk for the clipboard image read',
+      );
+    }
+    gdk.symbols.gdk_clipboard_read_async(clipboard, ptr(mimeArray), 0, null, cbPtr, null);
+  });
+};
+
+/** The MIME types currently advertised by the clipboard (Electron's `availableFormats`). */
+const availableFormats = (): string[] => {
+  const gdk = loadGdkFFI();
+  const glib = loadGlibFFI();
+  const formats = gdk.symbols.gdk_clipboard_get_formats(getClipboard());
+  if (formats === null) {
+    return [];
+  }
+  const cstrPtr = gdk.symbols.gdk_content_formats_to_string(formats);
+  if (cstrPtr === null) {
+    return [];
+  }
+  const text = new CString(cstrPtr).toString();
+  glib.symbols.g_free(cstrPtr);
+  return text
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+};
+
 const clear = (): void => {
   const gdk = loadGdkFFI();
   const clipboard = getClipboard();
   gdk.symbols.gdk_clipboard_set_content(clipboard, null);
 };
 
-/** The Linux native clipboard backend (plain text + HTML via GDK 4). */
+/** The Linux native clipboard backend (text + HTML + PNG images via GDK 4). */
 export const linuxClipboardBackend: ClipboardBackend = {
   readText,
   writeText,
   readHTML,
   writeHTML,
+  readImage,
+  writeImage,
+  availableFormats,
   clear,
 };

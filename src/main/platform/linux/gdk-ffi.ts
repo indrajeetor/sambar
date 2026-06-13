@@ -85,6 +85,16 @@ export const GDK_FFI_SYMBOLS = {
     args: [FFIType.cstring, FFIType.pointer],
     returns: FFIType.pointer,
   },
+  // (self) -> GdkContentFormats* (owned by the clipboard; do NOT free)
+  gdk_clipboard_get_formats: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
+  },
+  // (formats) -> transfer-full char* (space-separated mime list; free with g_free)
+  gdk_content_formats_to_string: {
+    args: [FFIType.pointer],
+    returns: FFIType.pointer,
+  },
   // (display) -> GListModel* of GdkMonitor (owned by GDK, do NOT unref the model)
   gdk_display_get_monitors: {
     args: [FFIType.pointer],

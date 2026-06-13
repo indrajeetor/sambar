@@ -24,6 +24,14 @@ import { createLinuxDrain } from '../../../src/main/platform/linux/gtk-run-loop'
 
 const isLinux = currentPlatform() === 'linux';
 
+/** A valid 1x1 PNG, round-tripped as raw `image/png` bytes (no NativeImage decode). */
+const PNG_1x1 = new Uint8Array(
+  Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  ),
+);
+
 /** Yield to Bun's loop for `ms` while a setTimeout-deferred callback can fire. */
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -80,7 +88,12 @@ describe.skipIf(!isLinux)('Linux clipboard backend (GDK 4)', () => {
       expect(typeof glib.symbols[name]).toBe('function');
       expect(name in GLIB_FFI_SYMBOLS).toBe(true);
     }
-    for (const name of ['gdk_clipboard_read_async', 'gdk_clipboard_read_finish'] as const) {
+    for (const name of [
+      'gdk_clipboard_read_async',
+      'gdk_clipboard_read_finish',
+      'gdk_clipboard_get_formats',
+      'gdk_content_formats_to_string',
+    ] as const) {
       expect(typeof gdk.symbols[name]).toBe('function');
       expect(name in GDK_FFI_SYMBOLS).toBe(true);
     }
@@ -165,4 +178,21 @@ describe.skipIf(!isLinux)('Linux clipboard backend (GDK 4)', () => {
     const got = await awaitWithPump(linuxClipboardBackend.readHTML(), 5000);
     expect(got).toBe('');
   }, 15000);
+
+  test('writeImage then readImage round-trips PNG bytes in the same process', async () => {
+    if (loadGtkFFI().symbols.gtk_init_check() === 0) {
+      return;
+    }
+    linuxClipboardBackend.writeImage(PNG_1x1);
+    const got = await awaitWithPump(linuxClipboardBackend.readImage(), 5000);
+    expect(Array.from(got)).toEqual(Array.from(PNG_1x1));
+  }, 15000);
+
+  test('availableFormats reports image/png after writing an image', () => {
+    if (loadGtkFFI().symbols.gtk_init_check() === 0) {
+      return;
+    }
+    linuxClipboardBackend.writeImage(PNG_1x1);
+    expect(linuxClipboardBackend.availableFormats()).toContain('image/png');
+  });
 });

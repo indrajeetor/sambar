@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { clipboard } from '../../../src/main/api/clipboard';
+import * as macosClipboard from '../../../src/main/platform/macos/cocoa-clipboard';
 import { currentPlatform } from '../../../src/common/platform';
+
+// A valid 1x1 PNG; NSPasteboard stores public.png data verbatim, so it
+// round-trips byte-for-byte without going through NativeImage's PNG encoder.
+const PNG_1x1 = new Uint8Array(
+  Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  ),
+);
 
 if (currentPlatform() === 'macos') {
   describe('clipboard on macOS', () => {
@@ -40,6 +50,22 @@ if (currentPlatform() === 'macos') {
     test('round-trips UTF-8 HTML content', async () => {
       clipboard.writeHTML('<p>café — 日本語 — 🎉</p>');
       expect(await clipboard.readHTML()).toBe('<p>café — 日本語 — 🎉</p>');
+    });
+
+    test('writeImage then readImage round-trips PNG bytes through NSPasteboard', () => {
+      macosClipboard.writeImage(PNG_1x1);
+      expect(macosClipboard.readImage()).toEqual(PNG_1x1);
+    });
+
+    test('availableFormats reports image/png after writing an image', () => {
+      macosClipboard.writeImage(PNG_1x1);
+      expect(macosClipboard.availableFormats()).toContain('image/png');
+    });
+
+    test('readImage is empty after the clipboard is cleared', () => {
+      macosClipboard.writeImage(PNG_1x1);
+      clipboard.clear();
+      expect(macosClipboard.readImage().length).toBe(0);
     });
   });
 }
