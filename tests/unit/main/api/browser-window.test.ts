@@ -243,6 +243,19 @@ describe('BrowserWindow default-session user agent', () => {
     new BrowserWindow();
     expect(windows[0]?.appliedUserAgent()).toBeUndefined();
   });
+
+  test('applies app.userAgentFallback when the session has no override', () => {
+    app.userAgentFallback = 'Fallback/1.0';
+    new BrowserWindow();
+    expect(windows[0]?.appliedUserAgent()).toBe('Fallback/1.0');
+  });
+
+  test('a session user agent takes precedence over app.userAgentFallback', () => {
+    app.userAgentFallback = 'Fallback/1.0';
+    session.defaultSession.setUserAgent('Session/2.0');
+    new BrowserWindow();
+    expect(windows[0]?.appliedUserAgent()).toBe('Session/2.0');
+  });
 });
 
 describe('BrowserWindow runtime setters', () => {

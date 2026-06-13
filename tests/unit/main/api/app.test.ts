@@ -246,6 +246,13 @@ describe('App name & version', () => {
   test('getVersion returns the manifest version', () => {
     expect(appWith().getVersion()).toBe('4.2.0');
   });
+
+  test('userAgentFallback defaults to empty and is settable', () => {
+    const a = appWith();
+    expect(a.userAgentFallback).toBe('');
+    a.userAgentFallback = 'MyApp/1.0';
+    expect(a.userAgentFallback).toBe('MyApp/1.0');
+  });
 });
 
 describe('App paths', () => {

@@ -100,6 +100,43 @@ describe('MenuItem roles', () => {
   });
 });
 
+describe('Menu macro roles', () => {
+  test('editMenu expands into a labeled submenu of standard edit items', () => {
+    const item = new MenuItem({ role: 'editMenu' });
+    expect(item.label).toBe('Edit');
+    expect(item.type).toBe('submenu');
+    expect(item.role).toBeUndefined();
+    const roles = item.submenu?.items.map((i) => i.role ?? i.type);
+    expect(roles).toEqual([
+      'undo',
+      'redo',
+      'separator',
+      'cut',
+      'copy',
+      'paste',
+      'pasteAndMatchStyle',
+      'delete',
+      'selectAll',
+    ]);
+  });
+
+  test('windowMenu expands into minimize/zoom/separator/close', () => {
+    const menu = Menu.buildFromTemplate([{ role: 'windowMenu' }]);
+    const windowItem = menu.items[0];
+    expect(windowItem?.label).toBe('Window');
+    expect(windowItem?.submenu?.items.map((i) => i.role ?? i.type)).toEqual([
+      'minimize',
+      'zoom',
+      'separator',
+      'close',
+    ]);
+  });
+
+  test('a macro role accepts a custom label', () => {
+    expect(new MenuItem({ role: 'editMenu', label: 'Edit…' }).label).toBe('Edit…');
+  });
+});
+
 describe('Menu role realization spec', () => {
   test('a role item realizes with its macOS selector and no onClick', () => {
     const menu = Menu.buildFromTemplate([{ role: 'copy' }]);

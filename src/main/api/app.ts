@@ -40,6 +40,7 @@ export class App extends EventEmitter {
   #env: AppEnvironment | undefined;
   #nameOverride: string | undefined;
   #singleInstance: SingleInstanceManager | undefined;
+  #userAgentFallback = '';
   readonly #pathOverrides = new Map<AppPathName, string>();
 
   /** The resolved host environment, built lazily on first use. */
@@ -67,6 +68,7 @@ export class App extends EventEmitter {
     this.#quitting = false;
     this.#nameOverride = undefined;
     this.#singleInstance = undefined;
+    this.#userAgentFallback = '';
     this.#pathOverrides.clear();
     for (const event of [
       'activate',
@@ -146,6 +148,19 @@ export class App extends EventEmitter {
   /** The application version from the app's `package.json`. */
   getVersion(): string {
     return resolveAppVersion(this.#environment().manifest);
+  }
+
+  /**
+   * The default User-Agent applied to new windows whose session has no explicit
+   * override (Electron's `app.userAgentFallback`). `''` means "use the platform
+   * WebKit default". A per-session `session.setUserAgent` takes precedence.
+   */
+  get userAgentFallback(): string {
+    return this.#userAgentFallback;
+  }
+
+  set userAgentFallback(value: string) {
+    this.#userAgentFallback = value;
   }
 
   /** The application root directory (the nearest `package.json`, or cwd). */

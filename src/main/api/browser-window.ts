@@ -158,11 +158,12 @@ export class BrowserWindow extends EventEmitter {
       popupMenu: (handle, x, y) => this.#native.popupMenu(handle, x, y),
       closePopupMenu: () => this.#native.closePopupMenu(),
     });
-    // Apply the default session's User-Agent override (if any) before the app's
-    // first navigation on this window.
+    // Apply the effective default User-Agent before this window's first
+    // navigation: a per-session override wins, else the app-wide fallback.
     const sessionUserAgent = session.defaultSession.getUserAgent();
-    if (sessionUserAgent !== '') {
-      this.webContents.setUserAgent(sessionUserAgent);
+    const effectiveUserAgent = sessionUserAgent !== '' ? sessionUserAgent : app.userAgentFallback;
+    if (effectiveUserAgent !== '') {
+      this.webContents.setUserAgent(effectiveUserAgent);
     }
     app.emit('web-contents-created', makeCancelableEvent(), this.webContents);
 

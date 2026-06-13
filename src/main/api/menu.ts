@@ -45,6 +45,14 @@ export type MenuRole =
   | 'hideOthers'
   | 'unhide';
 
+/**
+ * A "macro" role that expands to a whole standard submenu (Electron's
+ * `editMenu`/`windowMenu`). `appMenu`/`viewMenu` are deferred — `appMenu` needs
+ * the app name (a menu→app import cycle) and `viewMenu` needs reload/zoom/
+ * devtools menu roles Sambar doesn't expose yet.
+ */
+export type MenuMacroRole = 'editMenu' | 'windowMenu';
+
 export type MenuItemOptions = {
   readonly label?: string;
   readonly type?: MenuItemType;
@@ -55,8 +63,8 @@ export type MenuItemOptions = {
   readonly checked?: boolean;
   /** A single-key accelerator like `'CmdOrCtrl+Q'`. */
   readonly accelerator?: string;
-  /** A predefined role; fills a default label/accelerator and native behavior. */
-  readonly role?: MenuRole;
+  /** A predefined role (item-level) or a macro role that expands to a submenu. */
+  readonly role?: MenuRole | MenuMacroRole;
   readonly click?: () => void;
   readonly submenu?: Menu | ReadonlyArray<MenuItemOptions>;
 };
@@ -153,6 +161,34 @@ const ROLE_DEFAULTS: Record<
   unhide: { label: 'Show All', macSelector: 'unhideAllApplications:' },
 };
 
+/** Standard submenu each macro role expands into (Electron's defaults, minus deferred items). */
+const MACRO_ROLE_SUBMENUS: Record<
+  MenuMacroRole,
+  { readonly label: string; readonly submenu: ReadonlyArray<MenuItemOptions> }
+> = {
+  editMenu: {
+    label: 'Edit',
+    submenu: [
+      { role: 'undo' },
+      { role: 'redo' },
+      { type: 'separator' },
+      { role: 'cut' },
+      { role: 'copy' },
+      { role: 'paste' },
+      { role: 'pasteAndMatchStyle' },
+      { role: 'delete' },
+      { role: 'selectAll' },
+    ],
+  },
+  windowMenu: {
+    label: 'Window',
+    submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'close' }],
+  },
+};
+
+const isMacroRole = (role: MenuRole | MenuMacroRole): role is MenuMacroRole =>
+  role === 'editMenu' || role === 'windowMenu';
+
 /** Extract the bare key character from an accelerator string (e.g. `'CmdOrCtrl+Q'` → `'q'`). */
 const acceleratorKey = (accelerator: string | undefined): string => {
   if (accelerator === undefined || accelerator.length === 0) {
@@ -219,8 +255,22 @@ export class MenuItem {
 
   constructor(options: MenuItemOptions) {
     this.id = options.id;
-    this.role = options.role;
-    const roleDefault = options.role !== undefined ? ROLE_DEFAULTS[options.role] : undefined;
+    const role = options.role;
+    if (role !== undefined && isMacroRole(role)) {
+      // A macro role expands into a labeled submenu of standard role items.
+      const macro = MACRO_ROLE_SUBMENUS[role];
+      this.role = undefined;
+      this.label = options.label ?? macro.label;
+      this.enabled = options.enabled ?? true;
+      this.checked = false;
+      this.accelerator = undefined;
+      this.click = undefined;
+      this.submenu = Menu.buildFromTemplate(macro.submenu);
+      this.type = 'submenu';
+      return;
+    }
+    this.role = role;
+    const roleDefault = role !== undefined ? ROLE_DEFAULTS[role] : undefined;
     // App-supplied label/accelerator win over the role's defaults.
     this.label = options.label ?? roleDefault?.label ?? '';
     this.enabled = options.enabled ?? true;

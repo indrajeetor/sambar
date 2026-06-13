@@ -1,5 +1,5 @@
 import { nsString, nsStringToString } from './cocoa-foundation';
-import { msgSendPtr } from './cocoa-msgsend-variants';
+import { msgSendPtr, msgSendReturnsU8 } from './cocoa-msgsend-variants';
 import { distributedNotificationCenter, observeNotification } from './cocoa-notification-observer';
 import { cocoa } from './cocoa-runtime';
 
@@ -58,4 +58,16 @@ export const shouldUseDarkColors = (): boolean => {
 /** Fire `onChange` whenever the system appearance flips (light↔dark). */
 export const observeAppearanceChange = (onChange: () => void): void => {
   observeNotification(distributedNotificationCenter(), THEME_CHANGED_NOTIFICATION, onChange);
+};
+
+/** Whether the user has enabled "Reduce transparency" in Accessibility settings. */
+export const prefersReducedTransparency = (): boolean => {
+  const rt = cocoa();
+  const workspace = rt.msgSend(rt.classes.get('NSWorkspace'), rt.selectors.get('sharedWorkspace'));
+  return (
+    msgSendReturnsU8(
+      workspace,
+      rt.selectors.get('accessibilityDisplayShouldReduceTransparency'),
+    ) === 1
+  );
 };

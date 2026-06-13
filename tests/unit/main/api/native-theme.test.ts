@@ -7,6 +7,10 @@ describe('nativeTheme', () => {
     expect(typeof nativeTheme.shouldUseDarkColors).toBe('boolean');
   });
 
+  test('exposes a boolean prefersReducedTransparency', () => {
+    expect(typeof nativeTheme.prefersReducedTransparency).toBe('boolean');
+  });
+
   test('is an EventEmitter for the updated event', () => {
     expect(nativeTheme).toBeInstanceOf(EventEmitter);
   });

@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { currentPlatform } from '../../common/platform';
 import {
   observeAppearanceChange as macosObserveAppearance,
+  prefersReducedTransparency as macosPrefersReducedTransparency,
   setAppearance as macosSetAppearance,
   shouldUseDarkColors as macosShouldUseDarkColors,
 } from '../platform/macos/cocoa-native-theme';
@@ -41,6 +42,10 @@ const applyThemeSource = (source: ThemeSource): void => {
   }
 };
 
+/** Whether the OS requests reduced transparency. macOS-only; `false` elsewhere. */
+const osPrefersReducedTransparency = (): boolean =>
+  currentPlatform() === 'macos' ? macosPrefersReducedTransparency() : false;
+
 /** Register the platform's OS-appearance-change observer, firing `onChange` on a flip. */
 const observeOsAppearance = (onChange: () => void): void => {
   const platform = currentPlatform();
@@ -64,6 +69,14 @@ export class NativeThemeImpl extends EventEmitter {
       return false;
     }
     return osShouldUseDark();
+  }
+
+  /**
+   * Whether the OS requests reduced transparency (macOS Accessibility "Reduce
+   * transparency"). Always `false` on Linux, which has no equivalent setting.
+   */
+  get prefersReducedTransparency(): boolean {
+    return osPrefersReducedTransparency();
   }
 
   /** The appearance override: `'system'` follows the OS, else forces light/dark. */
