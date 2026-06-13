@@ -4,6 +4,7 @@ import { createLogger } from '../../common/logger';
 import { decodeEnvelope, encodeEnvelope } from '../ipc/ipc-protocol';
 import type { NativeWebContents } from '../platform/native';
 import { ipcMain } from './ipc-main';
+import { type NativeImage, nativeImage } from './native-image';
 
 /**
  * Controls and observes the content rendered inside a {@link BrowserWindow} —
@@ -161,6 +162,14 @@ export class WebContents extends EventEmitter {
    */
   async printToPDF(): Promise<Buffer> {
     return Buffer.from(await this.#native.printToPDF());
+  }
+
+  /**
+   * Capture the page to a {@link NativeImage} (Electron's `capturePage`). macOS
+   * only for now; rejects on Linux.
+   */
+  async capturePage(): Promise<NativeImage> {
+    return nativeImage.createFromBuffer(await this.#native.capturePage());
   }
 
   /**

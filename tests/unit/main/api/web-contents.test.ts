@@ -41,6 +41,7 @@ const makeFakeNative = (): {
       return Promise.resolve(undefined);
     },
     printToPDF: () => Promise.resolve(new Uint8Array([1, 2, 3])),
+    capturePage: () => Promise.resolve(new Uint8Array(0)),
     openDevTools: () => undefined,
     closeDevTools: () => undefined,
     setZoomFactor: (factor) => zooms.push(factor),
@@ -164,6 +165,15 @@ describe('WebContents.printToPDF', () => {
     const pdf = await wc.printToPDF();
     expect(Buffer.isBuffer(pdf)).toBe(true);
     expect([...pdf]).toEqual([1, 2, 3]);
+  });
+});
+
+describe('WebContents.capturePage', () => {
+  test('resolves a NativeImage from the native PNG bytes', async () => {
+    const wc = new WebContents(makeFakeNative().native);
+    const image = await wc.capturePage();
+    expect(typeof image.toPNG).toBe('function');
+    expect(typeof image.isEmpty).toBe('function');
   });
 });
 
@@ -381,6 +391,7 @@ describe('WebContents navigation', () => {
       canGoForward: () => false,
       executeJavaScript: () => Promise.resolve(undefined),
       printToPDF: () => Promise.resolve(new Uint8Array(0)),
+      capturePage: () => Promise.resolve(new Uint8Array(0)),
       openDevTools: () => undefined,
       closeDevTools: () => undefined,
       setZoomFactor: () => undefined,

@@ -95,6 +95,11 @@ export interface NativeWebContents {
    * Rejects on platforms without a page-to-PDF API (Linux/WebKitGTK).
    */
   printToPDF(): Promise<Uint8Array>;
+  /**
+   * Capture the page to a PNG image and resolve to its bytes (Electron's
+   * `capturePage`). Rejects on platforms where it is not yet wired (Linux).
+   */
+  capturePage(): Promise<Uint8Array>;
   /** Open the native web inspector (devtools) for this view. Best-effort. */
   openDevTools(): void;
   /** Close the native web inspector (devtools) for this view. Best-effort. */

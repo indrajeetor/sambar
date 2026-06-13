@@ -235,6 +235,14 @@ class LinuxWebContents implements NativeWebContents {
     );
   }
 
+  capturePage(): Promise<Uint8Array> {
+    // Feasible via webkit_web_view_get_snapshot → cairo surface → PNG; not yet
+    // wired (the async cairo path is a follow-up). Deferred (see PARITY.md).
+    return Promise.reject(
+      new UnsupportedPlatformError('webContents.capturePage is not yet supported on Linux'),
+    );
+  }
+
   /** @internal Reject every still-pending exec; called on window close. */
   rejectPendingExecs(): void {
     this.#exec.rejectPending();

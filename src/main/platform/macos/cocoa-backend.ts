@@ -28,6 +28,7 @@ import { cancelMenuTracking, popUpMenu } from './cocoa-menu';
 import {
   msgSendF64,
   msgSendI64,
+  msgSendI64Ptr,
   msgSendInitWithContentRect,
   msgSendInitWithFrameConfig,
   msgSendPtr,
@@ -74,6 +75,33 @@ const NS_ACTIVATION_POLICY_REGULAR = 0n;
 const NS_FULLSCREEN_STYLE_MASK = 16384n;
 /** `NSWindowStyleMaskResizable` (1 << 3). */
 const NS_RESIZABLE_STYLE_MASK = 8n;
+/** `NSBitmapImageFileTypePNG`. */
+const NS_BITMAP_FILE_TYPE_PNG = 4n;
+
+/** Encode an `NSImage` to PNG bytes via `NSBitmapImageRep` (empty on failure). */
+const nsImageToPng = (image: Handle): Uint8Array => {
+  const rt = cocoa();
+  const tiff = rt.msgSend(image, rt.selectors.get('TIFFRepresentation'));
+  if (tiff === 0n) {
+    return new Uint8Array(0);
+  }
+  const rep = msgSendPtr(
+    rt.classes.get('NSBitmapImageRep'),
+    rt.selectors.get('imageRepWithData:'),
+    tiff,
+  );
+  if (rep === 0n) {
+    return new Uint8Array(0);
+  }
+  const props = rt.msgSend(rt.classes.get('NSDictionary'), rt.selectors.get('dictionary'));
+  const png = msgSendI64Ptr(
+    rep,
+    rt.selectors.get('representationUsingType:properties:'),
+    NS_BITMAP_FILE_TYPE_PNG,
+    props,
+  );
+  return nsDataToBytes(png);
+};
 /** `NSFloatingWindowLevel` — above normal windows. */
 const NS_FLOATING_WINDOW_LEVEL = 3n;
 const WK_INJECTION_TIME_AT_DOCUMENT_START = 0n;
@@ -347,6 +375,44 @@ class MacOSWebContents implements NativeWebContents {
       msgSendPtrPtr(
         this.#webview,
         cocoa().selectors.get('createPDFWithConfiguration:completionHandler:'),
+        0n,
+        block,
+      );
+    });
+  }
+
+  /**
+   * Snapshot the page via `-[WKWebView takeSnapshotWithConfiguration:nil
+   * completionHandler:]` (a hand-built ObjC Block, D022b) and resolve the PNG
+   * bytes of the resulting `NSImage`.
+   */
+  capturePage(): Promise<Uint8Array> {
+    if (this.#destroyed) {
+      return Promise.reject(new Error('capturePage failed: web contents destroyed'));
+    }
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`capturePage timed out after ${EXEC_TIMEOUT_MS}ms`));
+      }, EXEC_TIMEOUT_MS);
+      const block = makeOneShotBlock(
+        (image, error) => {
+          clearTimeout(timer);
+          const img = BigInt(image ?? 0);
+          if (img === 0n) {
+            reject(new Error(`capturePage failed (NSError ${error ?? 'nil'})`));
+            return;
+          }
+          try {
+            resolve(nsImageToPng(img));
+          } catch (cause) {
+            reject(cause instanceof Error ? cause : new Error(String(cause)));
+          }
+        },
+        [FFIType.ptr, FFIType.ptr],
+      );
+      msgSendPtrPtr(
+        this.#webview,
+        cocoa().selectors.get('takeSnapshotWithConfiguration:completionHandler:'),
         0n,
         block,
       );

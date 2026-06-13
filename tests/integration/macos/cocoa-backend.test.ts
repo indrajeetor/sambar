@@ -118,6 +118,25 @@ if (currentPlatform() === 'macos') {
       }
     });
 
+    test('capturePage snapshots the page to PNG bytes via a block completion handler', async () => {
+      const app = createMacOSApplication();
+      app.start();
+      try {
+        const win = app.createWindow({ width: 320, height: 240, title: 't', show: true });
+        win.webContents.loadHTML(
+          '<html><body style="background:#08f">x</body></html>',
+          'about:blank',
+        );
+        await delay(300);
+        const png = await win.webContents.capturePage();
+        expect(png.length).toBeGreaterThan(8);
+        // PNG file magic: \x89 P N G.
+        expect([...png.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+      } finally {
+        app.quit();
+      }
+    });
+
     test('openDevTools exists and does not throw', async () => {
       const app = createMacOSApplication();
       app.start();
