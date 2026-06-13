@@ -60,6 +60,16 @@ describe('dialog.showMessageBox', () => {
     messageBoxResult = 1;
     expect(await dialog.showMessageBox({ message: 'm' })).toEqual({ response: 1 });
   });
+
+  test('forwards the severity type to the backend', async () => {
+    await dialog.showMessageBox({ message: 'm', type: 'warning' });
+    expect(lastMessageBox?.type).toBe('warning');
+  });
+
+  test('omits type when not provided', async () => {
+    await dialog.showMessageBox({ message: 'm' });
+    expect(lastMessageBox?.type).toBeUndefined();
+  });
 });
 
 describe('dialog.showOpenDialog', () => {
@@ -130,12 +140,13 @@ describe('dialog.showSaveDialog', () => {
 });
 
 describe('dialog.showErrorBox', () => {
-  test('routes the title and content through an OK message box', () => {
+  test('routes the title and content through an error-styled message box', () => {
     dialog.showErrorBox('Boom', 'Something failed');
     expect(lastMessageBox).toEqual({
       message: 'Boom',
       detail: 'Something failed',
       buttons: ['OK'],
+      type: 'error',
     });
   });
 });

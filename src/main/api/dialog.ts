@@ -21,6 +21,12 @@ export type MessageBoxOptions = {
   readonly detail?: string;
   /** Button labels; defaults to `['OK']`. The first is the default button. */
   readonly buttons?: ReadonlyArray<string>;
+  /**
+   * Severity: `info` | `error` | `question` | `warning` | `none`. Styles the
+   * `NSAlert` icon on macOS; GtkAlertDialog has no severity, so it is a no-op on
+   * Linux.
+   */
+  readonly type?: cocoaDialog.MessageBoxType;
 };
 
 export type MessageBoxReturnValue = {
@@ -128,6 +134,7 @@ export const dialog: Dialog = {
       message: options.message,
       detail: options.detail ?? '',
       buttons: options.buttons ?? ['OK'],
+      ...(options.type !== undefined ? { type: options.type } : {}),
     });
     return { response };
   },
@@ -154,6 +161,11 @@ export const dialog: Dialog = {
   // Electron's showErrorBox is sync/void; surface it through the message-box
   // backend (an error-styled alert). Fire-and-forget on Linux (async dialog).
   showErrorBox(title, content) {
-    void getBackend().showMessageBox({ message: title, detail: content, buttons: ['OK'] });
+    void getBackend().showMessageBox({
+      message: title,
+      detail: content,
+      buttons: ['OK'],
+      type: 'error',
+    });
   },
 };

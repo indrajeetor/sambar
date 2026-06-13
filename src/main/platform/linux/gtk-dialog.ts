@@ -170,6 +170,8 @@ const showMessageBox = (spec: {
   readonly message: string;
   readonly detail: string;
   readonly buttons: ReadonlyArray<string>;
+  // GtkAlertDialog has no severity concept, so `type` is accepted but ignored.
+  readonly type?: string;
 }): Promise<number> => {
   const gtk = loadGtkDialogFFI();
   const gobject = loadGtkDialogGObjectFFI();

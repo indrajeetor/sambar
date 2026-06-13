@@ -18,11 +18,35 @@ const NS_MODAL_RESPONSE_OK = 1n;
 /** `NSAlertFirstButtonReturn`; subsequent buttons are this + index. */
 const NS_ALERT_FIRST_BUTTON_RETURN = 1000n;
 
+/** Electron message-box severity. Drives the `NSAlert` icon/style on macOS. */
+export type MessageBoxType = 'none' | 'info' | 'error' | 'question' | 'warning';
+
 export type MessageBoxSpec = {
   readonly message: string;
   readonly detail: string;
   /** Button titles in order; the first is the default. */
   readonly buttons: ReadonlyArray<string>;
+  /** Severity styling; omitted/`none` leaves the default warning style. */
+  readonly type?: MessageBoxType;
+};
+
+/**
+ * Map an Electron message-box `type` to an `NSAlertStyle` value
+ * (warning = 0, informational = 1, critical = 2), or `undefined` to leave the
+ * `NSAlert` default. Pure.
+ */
+export const alertStyleForType = (type: MessageBoxType | undefined): bigint | undefined => {
+  switch (type) {
+    case 'info':
+    case 'question':
+      return 1n;
+    case 'error':
+      return 2n;
+    case 'warning':
+      return 0n;
+    default:
+      return undefined;
+  }
 };
 
 export type OpenDialogSpec = {
@@ -58,6 +82,10 @@ export const buildAlert = (spec: MessageBoxSpec): Handle => {
   );
   msgSendPtr(alert, rt.selectors.get('setMessageText:'), nsString(spec.message));
   msgSendPtr(alert, rt.selectors.get('setInformativeText:'), nsString(spec.detail));
+  const style = alertStyleForType(spec.type);
+  if (style !== undefined) {
+    msgSendI64(alert, rt.selectors.get('setAlertStyle:'), style);
+  }
   const buttons = spec.buttons.length > 0 ? spec.buttons : ['OK'];
   for (const title of buttons) {
     msgSendPtr(alert, rt.selectors.get('addButtonWithTitle:'), nsString(title));

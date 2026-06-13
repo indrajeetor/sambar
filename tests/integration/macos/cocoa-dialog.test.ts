@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { currentPlatform } from '../../../src/common/platform';
 import {
+  alertStyleForType,
   buildAlert,
   buildOpenPanel,
   buildSavePanel,
 } from '../../../src/main/platform/macos/cocoa-dialog';
+import { msgSendReturnsI64 } from '../../../src/main/platform/macos/cocoa-msgsend-variants';
+import { cocoa } from '../../../src/main/platform/macos/cocoa-runtime';
 
 /**
  * Only the non-blocking *build* steps are tested. The *run* steps call
@@ -21,6 +24,21 @@ if (currentPlatform() === 'macos') {
     test('buildAlert tolerates an empty button list', () => {
       const alert = buildAlert({ message: 'Hi', detail: '', buttons: [] });
       expect(alert).not.toBe(0n);
+    });
+
+    test('alertStyleForType maps Electron severities to NSAlertStyle', () => {
+      expect(alertStyleForType('info')).toBe(1n);
+      expect(alertStyleForType('question')).toBe(1n);
+      expect(alertStyleForType('warning')).toBe(0n);
+      expect(alertStyleForType('error')).toBe(2n);
+      expect(alertStyleForType('none')).toBeUndefined();
+      expect(alertStyleForType(undefined)).toBeUndefined();
+    });
+
+    test('buildAlert applies the alert style; AppKit reports it back', () => {
+      const alert = buildAlert({ message: 'Boom', detail: '', buttons: ['OK'], type: 'error' });
+      // NSAlertStyleCritical === 2.
+      expect(msgSendReturnsI64(alert, cocoa().selectors.get('alertStyle'))).toBe(2n);
     });
 
     test('buildOpenPanel returns a non-null NSOpenPanel for files', () => {
