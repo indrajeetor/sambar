@@ -56,9 +56,11 @@ Method-level depth inside implemented modules, in rough priority:
   `will-resize`/`resized`/`move`/`enter`–`leave-full-screen` events.
   *(Done: `setResizable`/`isResizable`, `setOpacity`/`getOpacity`,
   `setMinimumSize`/`getMinimumSize`, `getSize`, `center`.)*
-- **webContents**: `capturePage()`, `printToPDF()`, `page-title-updated`,
-  per-instance `ipc`. *(Done: `toggleDevTools`/`closeDevTools`/`isDevToolsOpened`,
-  `isDestroyed`.)*
+- **webContents**: `page-title-updated`, per-instance `ipc`; Linux `capturePage`
+  (via `webkit_web_view_get_snapshot`). *(Done: `capturePage` + `printToPDF` on
+  macOS — built on hand-built ObjC completion-handler Blocks (`cocoa-block.ts`),
+  which also unblocks `session.cookies` and `clearCache`;
+  `toggleDevTools`/`closeDevTools`/`isDevToolsOpened`, `isDestroyed`.)*
 - **session**: `cookies` (get/set/remove), `clearCache`/`clearStorageData`.
 - **dialog**: `showMessageBox` options (`type`, `defaultId`, `cancelId`, `title`,
   checkbox) + window-modal sheet.
