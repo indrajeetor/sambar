@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { Session, session } from '../../../../src/main/api/session';
+import { Session, session, setSessionBackendForTesting } from '../../../../src/main/api/session';
 
 afterEach(() => {
   session.defaultSession.resetForTesting();
+  setSessionBackendForTesting(undefined);
 });
 
 describe('session.defaultSession', () => {
@@ -23,5 +24,17 @@ describe('session.defaultSession', () => {
     session.defaultSession.setUserAgent('Sambar/1.0');
     session.defaultSession.resetForTesting();
     expect(session.defaultSession.getUserAgent()).toBe('');
+  });
+
+  test('clearStorageData delegates to the native backend', async () => {
+    let called = 0;
+    setSessionBackendForTesting({
+      clearStorageData: () => {
+        called += 1;
+        return Promise.resolve();
+      },
+    });
+    await session.defaultSession.clearStorageData();
+    expect(called).toBe(1);
   });
 });
